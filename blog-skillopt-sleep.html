@@ -437,6 +437,49 @@
     </div>
   </section>
 
+  <!-- ── BUILT ON ── -->
+  <section>
+    <h2><span class="icon">🏗️</span> Built On Microsoft's SkillOpt — Wired for Devin</h2>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px;">
+      <div style="display:flex; align-items:flex-start; gap:20px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:240px;">
+          <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:8px;">Foundation</div>
+          <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:4px;">Microsoft SkillOpt</div>
+          <div style="font-size:15px; color:var(--muted);">Research paper + open-source engine for self-evolving agent skills. Proven across 6 benchmarks and 7 models.</div>
+        </div>
+        <div style="color:var(--accent); font-size:28px; align-self:center;">→</div>
+        <div style="flex:1; min-width:240px;">
+          <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:8px;">Our Fork</div>
+          <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:4px;">SkillOPT @ scm.sys.flatex.com</div>
+          <div style="font-size:15px; color:var(--muted);">Extended and configured specifically for <strong style="color:var(--text);">Devin IDE + Windsurf</strong> — with MCP server integration, skills consolidation, and IDE wiring out of the box.</div>
+        </div>
+      </div>
+    </div>
+
+    <p>
+      Microsoft's SkillOpt gave us the core engine: the harvest → mine → replay → gate loop that
+      turns session history into validated skill improvements. What we built on top is the
+      <strong>integration layer</strong> — everything needed to make it actually work inside
+      a real development environment running Devin and Windsurf:
+    </p>
+
+    <ul class="checklist" style="margin: 16px 0 0;">
+      <li>MCP server exposing all 5 tools directly in your AI assistant chat</li>
+      <li>Windsurf-aware harvesting from agentmemory, SKILL.md files, and session logs</li>
+      <li>Single master config wiring Devin IDE, Windsurf, Codeium, and IntelliJ together</li>
+      <li>Global skills directory so evolved skills propagate instantly across all projects</li>
+      <li>Devin IDE shim that survives internal database path mismatches</li>
+    </ul>
+
+    <p style="margin-top:16px;">
+      The repo lives at
+      <strong><code>scm.sys.flatex.com/ai/SkillOPT</code></strong> and is what this blog
+      documents — not the upstream Microsoft research, but the <em>practical integration</em>
+      we built on top of it.
+    </p>
+  </section>
+
   <!-- ── WHAT IS IT ── -->
   <section>
     <h2><span class="icon">💡</span> What Is SkillOpt-Sleep?</h2>
