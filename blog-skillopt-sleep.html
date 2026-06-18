@@ -239,8 +239,8 @@
     }
 
     .pipe-step .emoji { font-size: 22px; display: block; margin-bottom: 6px; }
-    .pipe-step .title { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
-    .pipe-step .desc  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .pipe-step .title { font-size: 13px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+    .pipe-step .desc  { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
     /* ── Code blocks ── */
     .code-block {
@@ -249,7 +249,7 @@
       border-radius: var(--radius);
       overflow: hidden;
       margin: 16px 0;
-      font-size: 13.5px;
+      font-size: 14px;
     }
 
     .code-header {
@@ -308,7 +308,7 @@
       margin-top: 2px;
     }
 
-    .tool-desc { font-size: 14px; color: var(--text); }
+    .tool-desc { font-size: 15px; color: var(--text); }
     .tool-desc strong { color: #fff; }
 
     /* ── Checklist ── */
@@ -319,7 +319,7 @@
       display: flex;
       gap: 10px;
       align-items: flex-start;
-      font-size: 15px;
+      font-size: 16px;
     }
     .checklist li:last-child { border-bottom: none; }
     .checklist li::before { content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0; }
@@ -331,7 +331,7 @@
       border-radius: 0 var(--radius) var(--radius) 0;
       padding: 16px 20px;
       margin: 20px 0;
-      font-size: 15px;
+      font-size: 16px;
       color: var(--text);
     }
 
@@ -416,7 +416,7 @@
     <div class="two-col">
       <div class="problem-box">
         <h3>❌ Without SkillOpt-Sleep</h3>
-        <ul style="padding-left:16px; color: var(--muted); font-size:14px; line-height:2;">
+        <ul style="padding-left:16px; color: var(--muted); font-size:15px; line-height:1.9;">
           <li>Skills are static — never updated</li>
           <li>You manually tune prompts (tedious)</li>
           <li>Agent repeats the same mistakes</li>
@@ -426,7 +426,7 @@
       </div>
       <div class="solution-box">
         <h3>✅ With SkillOpt-Sleep</h3>
-        <ul style="padding-left:16px; color: var(--muted); font-size:14px; line-height:2;">
+        <ul style="padding-left:16px; color: var(--muted); font-size:15px; line-height:1.9;">
           <li>Skills evolve from your real daily work</li>
           <li>Zero manual prompt engineering</li>
           <li>Agent learns from its own past sessions</li>
@@ -577,7 +577,7 @@
 
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0; color: var(--accent2);">Week 1 — The agent stops asking obvious questions</h3>
-      <p style="margin:0; color: var(--muted); font-size:14px;">
+      <p style="margin:0; color: var(--muted); font-size:15px;">
         Before, every code review session started with the agent re-discovering your project
         structure and conventions. After the first sleep cycle, it already knows your package
         layout, your naming patterns, your preferred error handling style — because it mined
@@ -587,7 +587,7 @@
 
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0; color: var(--accent2);">Week 2 — Recurring tasks get shorter to write</h3>
-      <p style="margin:0; color: var(--muted); font-size:14px;">
+      <p style="margin:0; color: var(--muted); font-size:15px;">
         Instead of writing "generate a Spring Boot service with repository, DTO, validator,
         and Mockito tests following our standards", you write "generate UserService".
         The evolved skill already carries all the context. Your prompts shrink because
@@ -597,7 +597,7 @@
 
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0; color: var(--accent2);">Week 3 — The corrections stop repeating</h3>
-      <p style="margin:0; color: var(--muted); font-size:14px;">
+      <p style="margin:0; color: var(--muted); font-size:15px;">
         You used to correct the same things every session — "don't use field injection",
         "always add @Transactional on service methods", "use ResponseEntity not raw objects".
         Sleep mines those corrections from your agentmemory and encodes them permanently
@@ -607,7 +607,7 @@
 
     <div class="card">
       <h3 style="margin-top:0; color: var(--accent2);">Month 2 — A new developer opens the project</h3>
-      <p style="margin:0; color: var(--muted); font-size:14px;">
+      <p style="margin:0; color: var(--muted); font-size:15px;">
         They get an AI assistant that already knows your team's conventions — not because
         someone wrote documentation, but because two months of real sessions were
         consolidated into the skills. The agent teaches the new developer your standards
@@ -718,28 +718,28 @@
     <div class="card-grid">
       <div class="card">
         <h3 style="margin-top:0;">🏗️ Living Architecture Docs</h3>
-        <p style="margin:0; font-size:14px; color:var(--muted);">
+        <p style="margin:0; font-size:15px; color:var(--muted);">
           Skills become a living record of your team's best practices, continuously
           refined from real work — not a wiki that goes stale in 3 months.
         </p>
       </div>
       <div class="card">
         <h3 style="margin-top:0;">📈 Compounding Improvement</h3>
-        <p style="margin:0; font-size:14px; color:var(--muted);">
+        <p style="margin:0; font-size:15px; color:var(--muted);">
           Every week your agent gets a bit better at your recurring tasks.
           After a month, the difference is noticeable. After a year, it's remarkable.
         </p>
       </div>
       <div class="card">
         <h3 style="margin-top:0;">🛡️ Gated — Never Regresses</h3>
-        <p style="margin:0; font-size:14px; color:var(--muted);">
+        <p style="margin:0; font-size:15px; color:var(--muted);">
           The validation gate means skills only accept edits that strictly improve.
           You review before adopting. Safe to run every night.
         </p>
       </div>
       <div class="card">
         <h3 style="margin-top:0;">🔌 Zero Friction</h3>
-        <p style="margin:0; font-size:14px; color:var(--muted);">
+        <p style="margin:0; font-size:15px; color:var(--muted);">
           Runs as an MCP server. No separate tools, no new UIs.
           Just ask your AI assistant to run it from your normal chat window.
         </p>
@@ -768,7 +768,7 @@
     <div class="two-col" style="margin: 20px 0;">
       <div class="problem-box">
         <h3>❌ Before</h3>
-        <ul style="padding-left:16px; color: var(--muted); font-size:13px; line-height:2.1;">
+        <ul style="padding-left:16px; color: var(--muted); font-size:15px; line-height:1.9;">
           <li>MCP config in 6 different files</li>
           <li>Skills duplicated across 5 projects</li>
           <li>skillopt-sleep missing everywhere</li>
@@ -778,7 +778,7 @@
       </div>
       <div class="solution-box">
         <h3>✅ After</h3>
-        <ul style="padding-left:16px; color: var(--muted); font-size:13px; line-height:2.1;">
+        <ul style="padding-left:16px; color: var(--muted); font-size:15px; line-height:1.9;">
           <li>One master <code>mcp_config.json</code></li>
           <li>All IDEs symlinked to master</li>
           <li>Skills in one global location</li>
