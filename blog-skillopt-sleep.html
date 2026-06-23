@@ -434,13 +434,13 @@
   <h1>Your AI Coding Assistant<br>Gets Smarter While You Sleep</h1>
   <p class="subtitle">
     A practical guide to SkillOpt-Sleep — the nightly self-evolution engine that turns
-    your team's daily work into lasting, reviewed improvements to your Windsurf and Devin
+    your team's daily work into lasting, reviewed improvements to your Devin
     skills. For product owners, testers, and developers alike.
   </p>
   <div class="meta">
     <span>😴 SkillOpt-Sleep</span>
     <span>⏱ 8 min read</span>
-    <span>🔧 MCP · Windsurf · Devin</span>
+    <span>🔧 MCP · Devin</span>
   </div>
 </header>
 
@@ -497,7 +497,7 @@
         <div style="flex:1; min-width:240px;">
           <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:8px;">Our Fork</div>
           <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:4px;">SkillOPT-devin (this fork)</div>
-          <div style="font-size:15px; color:var(--muted);">Extended and configured specifically for <strong style="color:var(--text);">Devin IDE + Windsurf</strong> — with MCP server integration, skills consolidation, and IDE wiring out of the box.</div>
+          <div style="font-size:15px; color:var(--muted);">Extended and configured specifically for <strong style="color:var(--text);">Devin IDE</strong> — with MCP server integration, ATIF-v1.7 transcript harvesting, and Devin CLI wiring out of the box.</div>
         </div>
       </div>
     </div>
@@ -506,34 +506,33 @@
       Microsoft's SkillOpt gave us the core engine: the harvest → mine → replay → gate loop that
       turns session history into validated skill improvements. What we built on top is the
       <strong>integration layer</strong> — everything needed to make it actually work inside
-      a real development environment running Devin and Windsurf:
+      a real development environment running Devin:
     </p>
 
     <ul class="checklist" style="margin: 16px 0 0;">
-      <li>MCP server exposing all 5 tools directly in your AI assistant chat</li>
-      <li>Windsurf-aware harvesting from agentmemory, SKILL.md files, and session logs</li>
-      <li>Single master config wiring Devin, Windsurf, Codeium, and IntelliJ together</li>
+      <li>MCP server exposing all 5 tools directly in your Devin chat</li>
+      <li>Devin ATIF-v1.7 transcript harvesting plus agentmemory and SKILL.md files</li>
+      <li>Devin CLI auto-registration via <code>devin mcp add</code></li>
       <li>Global skills directory so evolved skills propagate instantly across all projects</li>
-      <li>Devin IDE shim that survives internal database path mismatches</li>
+      <li>Cross-platform path resolution for Linux and Windows</li>
     </ul>
 
-    <h3 style="margin: 24px 0 12px;">Devin-Specific Integration</h3>
+    <h3 style="margin: 24px 0 12px;">Devin Integration Details</h3>
     <p style="margin-bottom:12px;">
-      Beyond the general MCP plumbing, we built <strong>Devin-specific adaptations</strong> to bridge Microsoft's engine — whose reference harness uses the Claude Code transcript format — with Devin's architecture:
+      We built <strong>Devin-specific adaptations</strong> to bridge Microsoft's engine — whose reference harness uses the Claude Code transcript format — with Devin's architecture:
     </p>
     <ul class="checklist" style="margin: 0 0 16px;">
       <li><strong>Devin ATIF-v1.7 transcript harvesting</strong> — Native support for Devin's session format from <code>~/.local/share/devin/cli/transcripts/*.json</code>, converted to Claude Code-compatible JSONL</li>
       <li><strong>Devin workspace auto-detection</strong> — Automatically finds Devin workspaces from <code>~/.config/Devin/User/workspaceStorage/*/workspace.json</code></li>
-      <li><strong>Dual skill syncing</strong> — After <code>sleep_adopt</code>, evolved skills automatically sync to both <code>.windsurf/skills/</code> <strong>and</strong> <code>.devin/skills/</code> directories</li>
+      <li><strong>Skill syncing</strong> — After <code>sleep_adopt</code>, evolved skills automatically sync to <code>.devin/skills/</code></li>
       <li><strong>Devin CLI MCP auto-registration</strong> — Installer automatically runs <code>devin mcp add skillopt-sleep</code> when Devin CLI is detected on PATH</li>
       <li><strong>Devin rules snippet</strong> — Custom <code>devin-rules.snippet.md</code> tells Devin when to offer sleep tools and how to use them effectively</li>
-      <li><strong>Simultaneous IDE support</strong> — Single MCP server and harvester work with both Windsurf and Devin at the same time, learning from sessions in either environment</li>
     </ul>
 
     <p style="margin-top:16px;">
       This blog documents that fork — not the upstream Microsoft research, but the
       <em>practical integration</em> we built on top of it to make SkillOpt-Sleep work
-      inside Devin and Windsurf.
+      inside Devin.
     </p>
   </section>
 
@@ -555,10 +554,10 @@
     </div>
 
     <p>
-      Think of it like this: every day you work with Windsurf or Devin, you're generating
+      Think of it like this: every day you work with Devin, you're generating
       valuable training signal — recurring tasks, patterns, corrections, successful approaches.
       Without SkillOpt-Sleep, all of that signal vanishes. With it, a nightly cycle harvests
-      that experience and uses it to make your agent measurably better.
+      that experience and uses it to make Devin measurably better at your work.
     </p>
   </section>
 
@@ -600,8 +599,7 @@
     <ul class="checklist">
       <li><strong>Devin transcripts</strong> — Native ATIF-v1.7 sessions from <code>~/.local/share/devin/cli/transcripts/*.json</code> with real user↔agent turns</li>
       <li><strong>agentmemory</strong> — Memories saved by the MCP agentmemory server across all your sessions</li>
-      <li><strong>SKILL.md files</strong> — Your existing skill definitions from both <code>.windsurf/skills/</code> and <code>.devin/skills/</code> used as training signal</li>
-      <li><strong>Windsurf / Cascade logs</strong> — Task snippets extracted from IDE session logs</li>
+      <li><strong>SKILL.md files</strong> — Your existing skill definitions from <code>.devin/skills/</code> used as training signal</li>
     </ul>
 
     <h3>The Validation Gate — Why It's Safe</h3>
@@ -639,17 +637,17 @@
     <h3>2. Multi-Project Team</h3>
     <div class="card">
       <p style="margin-bottom:0;">
-        You manage multiple repos (backend services, UI apps, automation). Skills are now
-        centralized in <code>~/.codeium/windsurf/skills/</code> and shared across all projects.
+        You manage multiple repos (backend services, UI apps, automation). Skills are
+        centralized in <code>~/.skillopt-sleep-devin/</code> and shared across all projects.
         SkillOpt-Sleep evolves them based on work happening across <strong>all projects</strong>,
-        not just one — the agent learns patterns that work everywhere.
+        not just one — Devin learns patterns that work everywhere.
       </p>
     </div>
 
     <h3>3. Onboarding New Developers</h3>
     <div class="card">
       <p style="margin-bottom:0;">
-        A new developer joins and opens the project in Windsurf. They immediately get
+        A new developer joins and opens the project with Devin. They immediately get
         an AI assistant that already knows your team's conventions, your preferred patterns,
         and common pitfalls — because those are encoded in evolved SKILL.md files,
         not scattered in Confluence docs nobody reads.
@@ -673,7 +671,7 @@
 
     <p>
       SkillOpt-Sleep isn't only for developers. Anyone on the team who does the
-      <strong>same kind of task over and over</strong> in Windsurf or Devin gets sharper at it,
+      <strong>same kind of task over and over</strong> in Devin gets sharper at it,
       because the engine learns from what you keep, edit, and reject. Here's what it means for
       three common roles — in plain terms.
     </p>
@@ -971,8 +969,8 @@
     <h2><span class="icon">🛠️</span> The 5 MCP Tools You Get</h2>
 
     <p>
-      SkillOpt-Sleep is integrated as an <strong>MCP server</strong> in Windsurf and Devin,
-      giving you these tools directly in your AI assistant:
+      SkillOpt-Sleep is integrated as an <strong>MCP server</strong> in Devin,
+      giving you these tools directly in your Devin chat:
     </p>
 
     <div class="tool-list">
@@ -990,7 +988,7 @@
       </div>
       <div class="tool-item">
         <span class="tool-name">sleep_adopt</span>
-        <div class="tool-desc"><strong>Apply the improvement.</strong> Applies the staged proposal to your SKILL.md and syncs it to your Windsurf workspace so the agent picks it up immediately.</div>
+        <div class="tool-desc"><strong>Apply the improvement.</strong> Applies the staged proposal to your SKILL.md and syncs it to your Devin workspace so Devin picks it up immediately.</div>
       </div>
       <div class="tool-item">
         <span class="tool-name">sleep_harvest</span>
@@ -1009,7 +1007,7 @@
         <span class="code-dot red"></span>
         <span class="code-dot yellow"></span>
         <span class="code-dot green"></span>
-        <span>Ask in Windsurf / Devin</span>
+        <span>Ask Devin</span>
       </div>
       <pre><span class="comment"># Just ask your AI assistant:</span>
 <span class="str">"run sleep_harvest to show me what recurring tasks have been mined"</span></pre>
@@ -1021,7 +1019,7 @@
         <span class="code-dot red"></span>
         <span class="code-dot yellow"></span>
         <span class="code-dot green"></span>
-        <span>Ask in Windsurf / Devin</span>
+        <span>Ask Devin</span>
       </div>
       <pre><span class="str">"run sleep_dry_run to preview what would change in my skills"</span>
 
@@ -1038,7 +1036,7 @@
         <span class="code-dot red"></span>
         <span class="code-dot yellow"></span>
         <span class="code-dot green"></span>
-        <span>Ask in Windsurf / Devin</span>
+        <span>Ask Devin</span>
       </div>
       <pre><span class="str">"run sleep_run with mock backend to stage a proposal"</span>
 
@@ -1092,12 +1090,12 @@
 
   <!-- ── HOW TO USE ── -->
   <section>
-    <h2><span class="icon">🌊</span> How to Use It in Windsurf</h2>
+    <h2><span class="icon">🤖</span> How to Use It in Devin</h2>
 
     <p>
-      Once the MCP server
-      is registered in Windsurf, all five tools are available directly in your AI assistant chat.
-      No separate CLI, no scripts to run manually — just talk to your assistant.
+      Once the MCP server is registered (via <code>devin mcp add skillopt-sleep</code>),
+      all five tools are available directly in your Devin chat.
+      No separate CLI, no scripts to run manually — just talk to Devin.
     </p>
 
     <h3>1. Check what the engine has seen so far</h3>
@@ -1108,7 +1106,7 @@
     <div class="code-block">
       <div class="code-header">
         <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
-        <span>Windsurf chat</span>
+        <span>Devin chat</span>
       </div>
       <pre><span class="str">"run sleep_status"</span>
 
@@ -1127,7 +1125,7 @@
     <div class="code-block">
       <div class="code-header">
         <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
-        <span>Windsurf chat</span>
+        <span>Devin chat</span>
       </div>
       <pre><span class="str">"run sleep_dry_run"</span>
 
@@ -1143,7 +1141,7 @@
     <div class="code-block">
       <div class="code-header">
         <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
-        <span>Windsurf chat</span>
+        <span>Devin chat</span>
       </div>
       <pre><span class="str">"run sleep_run"</span>
 
@@ -1154,12 +1152,12 @@
     <h3>4. Review and apply the improvement</h3>
     <p>
       After reviewing the staged proposal, apply it. The updated SKILL.md is written and
-      picked up by Windsurf immediately — no restart needed.
+      picked up by Devin immediately — no restart needed.
     </p>
     <div class="code-block">
       <div class="code-header">
         <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
-        <span>Windsurf chat</span>
+        <span>Devin chat</span>
       </div>
       <pre><span class="str">"run sleep_status"</span>    <span class="comment"># read the proposed changes</span>
 <span class="str">"run sleep_adopt"</span>     <span class="comment"># apply them to your SKILL.md</span></pre>
@@ -1172,63 +1170,25 @@
     </div>
   </section>
 
-  <!-- ── HOW TO USE IN DEVIN ── -->
-  <section>
-    <h2><span class="icon">🤖</span> How to Use It in Devin</h2>
-
-    <p>
-      Devin integration is identical in functionality — the same 5 MCP tools are available
-      in your Devin chat. The setup is handled automatically by the installer, which detects
-      Devin CLI and registers the MCP server for you.
-    </p>
-
-    <h3>Devin-Specific Setup</h3>
-    <ul class="checklist" style="margin: 16px 0;">
-      <li><strong>Auto MCP registration:</strong> Installer runs <code>devin mcp add skillopt-sleep</code> when Devin CLI is detected</li>
-      <li><strong>Devin rules snippet:</strong> Optional <code>devin-rules.snippet.md</code> tells Devin when to offer sleep tools</li>
-      <li><strong>Dual skill syncing:</strong> After <code>sleep_adopt</code>, skills sync to both <code>.devin/skills/</code> and <code>.windsurf/skills/</code></li>
-      <li><strong>Native transcript format:</strong> Harvests Devin's ATIF-v1.7 format directly from <code>~/.local/share/devin/cli/transcripts/</code></li>
-    </ul>
-
-    <h3>Using the Sleep Tools in Devin</h3>
-    <p>
-      The workflow is identical to Windsurf — ask Devin to run the same tools:
-    </p>
-    <div class="code-block">
-      <div class="code-header">
-        <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
-        <span>Devin chat</span>
-      </div>
-      <pre><span class="str">"run sleep_status"</span>    <span class="comment"># check progress and staged proposals</span>
-<span class="str">"run sleep_dry_run"</span>   <span class="comment"># preview changes without committing</span>
-<span class="str">"run sleep_run"</span>      <span class="comment"># run full cycle and stage proposal</span>
-<span class="str">"run sleep_adopt"</span>    <span class="comment"># apply the staged proposal</span></pre>
-    </div>
-
-    <div class="callout">
-      <strong>Simultaneous learning:</strong> The same MCP server harvests from both Windsurf and Devin sessions,
-      so your agent learns from your work regardless of which IDE you use each day.
-    </div>
-  </section>
 
   <!-- ── SUMMARY ── -->
   <section>
     <h2><span class="icon">✨</span> Summary</h2>
 
     <p>
-      SkillOpt-Sleep turns your AI coding assistant from a static tool into a
-      <strong>self-improving partner</strong>. Every day you use Windsurf or Devin,
+      SkillOpt-Sleep turns Devin from a static tool into a
+      <strong>self-improving partner</strong>. Every day you use Devin,
       you're building training signal. Every night, that signal gets turned into
       a better version of your skills — validated, staged for review, and ready to adopt.
     </p>
 
     <ul class="checklist" style="margin-top:16px;">
       <li>No weight training, no fine-tuning — pure text optimization of your SKILL.md files</li>
-      <li>Harvests from Devin transcripts, agentmemory, skills, and Windsurf session logs</li>
+      <li>Harvests from Devin transcripts, agentmemory, and skill files</li>
       <li>Validation gate ensures skills only improve, never regress</li>
       <li>You always review the proposal before it goes live</li>
-      <li>Integrated as MCP server — available directly in Windsurf and Devin with auto-registration</li>
-      <li>Dual skill syncing — evolved skills automatically propagate to both IDEs</li>
+      <li>Integrated as MCP server — available directly in Devin with auto-registration via CLI</li>
+      <li>Evolved skills automatically sync to <code>.devin/skills/</code> on adopt</li>
       <li>Published results: up to +23.5 average accuracy points on GPT-5.5 (+19 to +25 depending on the execution harness); best or tied on all 52 model × benchmark × harness settings</li>
     </ul>
   </section>

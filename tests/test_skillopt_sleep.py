@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test suite for the SkillOpt-Sleep Windsurf/Devin plugin.
+"""Test suite for the SkillOpt-Sleep Devin plugin.
 
 Stdlib-only (unittest) so it runs anywhere the plugin runs — no pytest needed:
 
@@ -29,7 +29,7 @@ PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PLUGIN_DIR not in sys.path:
     sys.path.insert(0, PLUGIN_DIR)
 
-import harvest_windsurf as hw  # noqa: E402
+import harvest_devin as hw  # noqa: E402
 import judge                    # noqa: E402
 import mcp_server               # noqa: E402
 
@@ -91,8 +91,8 @@ class TestCrossPlatformPaths(unittest.TestCase):
     def test_windows_app_data_root(self):
         with mock.patch.object(hw.os, "name", "nt"), \
              mock.patch.dict(hw.os.environ, {"APPDATA": r"C:\Users\me\AppData\Roaming"}):
-            roots = hw._app_data_roots("Windsurf")
-        self.assertTrue(any("AppData" in r and r.endswith("Windsurf") for r in roots),
+            roots = hw._app_data_roots("Devin")
+        self.assertTrue(any("AppData" in r and r.endswith("Devin") for r in roots),
                         f"no Windows %APPDATA% root in {roots}")
 
     def test_linux_app_data_root(self):
@@ -100,8 +100,8 @@ class TestCrossPlatformPaths(unittest.TestCase):
         with mock.patch.object(hw.os, "name", "posix"), \
              mock.patch.object(hw.sys, "platform", "linux"), \
              mock.patch.dict(hw.os.environ, env, clear=True):
-            roots = hw._app_data_roots("Windsurf")
-        self.assertTrue(any(r.endswith(os.path.join(".config", "Windsurf")) for r in roots),
+            roots = hw._app_data_roots("Devin")
+        self.assertTrue(any(r.endswith(os.path.join(".config", "Devin")) for r in roots),
                         f"no ~/.config root in {roots}")
 
     def test_uri_to_path_linux(self):
@@ -115,7 +115,7 @@ class TestCrossPlatformPaths(unittest.TestCase):
     def test_env_override_splits_on_pathsep(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
             joined = os.pathsep.join([a, b])
-            with mock.patch.dict(hw.os.environ, {"SKILLOPT_WINDSURF_WORKSPACES": joined}):
+            with mock.patch.dict(hw.os.environ, {"SKILLOPT_DEVIN_WORKSPACES": joined}):
                 ws = hw._detect_workspaces()
             self.assertIn(a, ws)
             self.assertIn(b, ws)

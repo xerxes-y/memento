@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# install.sh — set up SkillOpt-Sleep for Windsurf/Cascade
+# install.sh — set up SkillOpt-Sleep for Devin
 #
 # What this does:
 #   1. Clones microsoft/SkillOpt (provides the sleep engine, ~20 MB)
 #   2. Installs it (editable) into the current Python environment
-#   3. Creates the runtime data dir (~/.skillopt-sleep-windsurf)
-#   4. Copies the seed SKILL.md into every detected Windsurf workspace
-#   5. Patches ~/.codeium/windsurf/mcp_config.json to register the MCP server
+#   3. Creates the runtime data dir (~/.skillopt-sleep-devin)
+#   4. Copies the seed SKILL.md into every detected Devin workspace
+#   5. Registers the MCP server with Devin CLI (devin mcp add)
 #
 # Usage:
 #   bash install.sh [--skillopt-dir PATH] [--data-dir PATH] [--dry-run]
@@ -18,8 +18,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
 
 # ── defaults ──────────────────────────────────────────────────────────────────
 SKILLOPT_DIR="${SKILLOPT_DIR:-$PROJECT_DIR/../SkillOpt}"
-DATA_DIR="${SKILLOPT_WINDSURF_CLAUDE_HOME:-$HOME/.skillopt-sleep-windsurf}"
-MCP_CONFIG="$HOME/.codeium/windsurf/mcp_config.json"
+DATA_DIR="${SKILLOPT_DEVIN_CLAUDE_HOME:-$HOME/.skillopt-sleep-devin}"
 DRY_RUN=0
 
 # ── argument parsing ──────────────────────────────────────────────────────────
@@ -64,70 +63,37 @@ run "$PYTHON" -m pip install --quiet -e "$SKILLOPT_DIR" --break-system-packages 
 log "Creating data dir: $DATA_DIR"
 run mkdir -p "$DATA_DIR/projects"
 
-# ── 5. Seed skill into workspaces ─────────────────────────────────────────────
+# ── 5. Seed skill into Devin workspaces ──────────────────────────────────────
 MANAGED_SKILL="${SKILLOPT_MANAGED_SKILL:-skillopt-sleep-learned}"
 SEED="$SCRIPT_DIR/seed_skill/SKILL.md"
-WS_STORAGE="$HOME/.config/Windsurf/User/workspaceStorage"
+
 _seed_skill_in_folder() {
   local folder="$1"
-  for dot_dir in .windsurf .devin; do
-    if [[ -d "$folder/$dot_dir" ]]; then
-      local skill_dir="$folder/$dot_dir/skills/$MANAGED_SKILL"
-      if [[ ! -f "$skill_dir/SKILL.md" ]]; then
-        log "Seeding skill → $skill_dir/SKILL.md"
-        run mkdir -p "$skill_dir"
-        run cp "$SEED" "$skill_dir/SKILL.md"
-      else
-        log "Skill already present: $skill_dir/SKILL.md (skipped)"
-      fi
+  if [[ -d "$folder/.devin" ]]; then
+    local skill_dir="$folder/.devin/skills/$MANAGED_SKILL"
+    if [[ ! -f "$skill_dir/SKILL.md" ]]; then
+      log "Seeding skill → $skill_dir/SKILL.md"
+      run mkdir -p "$skill_dir"
+      run cp "$SEED" "$skill_dir/SKILL.md"
+    else
+      log "Skill already present: $skill_dir/SKILL.md (skipped)"
     fi
-  done
+  fi
 }
 
-for registry in \
-  "$HOME/.config/Windsurf/User/workspaceStorage" \
-  "$HOME/.config/Devin/User/workspaceStorage"; do
-  if [[ -d "$registry" ]]; then
-    while IFS= read -r ws_json; do
-      folder=$(python3 -c "
+if [[ -d "$HOME/.config/Devin/User/workspaceStorage" ]]; then
+  while IFS= read -r ws_json; do
+    folder=$(python3 -c "
 import json; d=json.load(open('$ws_json')); f=d.get('folder','')
 print(f[7:] if f.startswith('file://') else f)
 " 2>/dev/null)
-      if [[ -n "$folder" && -d "$folder" ]]; then
-        _seed_skill_in_folder "$folder"
-      fi
-    done < <(find "$registry" -name "workspace.json" 2>/dev/null)
-  fi
-done
-
-# ── 6. Patch Windsurf mcp_config.json ────────────────────────────────────────
-MCP_ENTRY='{
-  "command": "python3",
-  "args": ["'"$SCRIPT_DIR/mcp_server.py"'"],
-  "env": {
-    "SKILLOPT_SLEEP_REPO": "'"$SKILLOPT_DIR"'",
-    "SKILLOPT_WINDSURF_CLAUDE_HOME": "'"$DATA_DIR"'"
-  }
-}'
-
-if [[ $DRY_RUN -eq 0 ]]; then
-  mkdir -p "$(dirname "$MCP_CONFIG")"
-  if [[ ! -f "$MCP_CONFIG" ]]; then
-    echo '{"mcpServers":{}}' > "$MCP_CONFIG"
-  fi
-  python3 - <<PYEOF
-import json, sys
-cfg = json.load(open("$MCP_CONFIG"))
-cfg.setdefault("mcpServers", {})["skillopt-sleep"] = $MCP_ENTRY
-with open("$MCP_CONFIG", "w") as f:
-    json.dump(cfg, f, indent=2)
-print("[install] Windsurf MCP config updated: $MCP_CONFIG")
-PYEOF
-else
-  echo "[dry-run] Would patch: $MCP_CONFIG"
+    if [[ -n "$folder" && -d "$folder" ]]; then
+      _seed_skill_in_folder "$folder"
+    fi
+  done < <(find "$HOME/.config/Devin/User/workspaceStorage" -name "workspace.json" 2>/dev/null)
 fi
 
-# ── 7. Register with Devin CLI MCP ────────────────────────────────────────────
+# ── 6. Register with Devin CLI MCP ────────────────────────────────────────────
 DEVIN_BIN=""
 for candidate in \
   "$HOME/.local/share/devin/cli/$(ls "$HOME/.local/share/devin/cli/_versions/" 2>/dev/null | sort -V | tail -1)/bin/devin" \
@@ -146,7 +112,7 @@ if [[ -n "$DEVIN_BIN" ]]; then
     "$DEVIN_BIN" mcp remove skillopt-sleep 2>/dev/null || true
     "$DEVIN_BIN" mcp add skillopt-sleep \
       --env "SKILLOPT_SLEEP_REPO=$SKILLOPT_DIR" \
-      --env "SKILLOPT_WINDSURF_CLAUDE_HOME=$DATA_DIR" \
+      --env "SKILLOPT_DEVIN_CLAUDE_HOME=$DATA_DIR" \
       -- python3 "$SCRIPT_DIR/mcp_server.py"
     log "Devin MCP registered: skillopt-sleep"
   else
@@ -161,14 +127,9 @@ fi
 echo ""
 echo "✓ Installation complete."
 echo ""
-echo "  Windsurf next steps:"
-echo "  1. Reload MCP servers (Cmd+Shift+P → 'Windsurf: Reload MCP Servers')"
-echo "  2. (Optional) append windsurf-rules.snippet.md to your .windsurfrules"
-echo "  3. Ask Cascade: 'run the sleep cycle'"
-echo ""
 echo "  Devin next steps:"
 echo "  1. MCP registration was handled automatically (if Devin CLI was found)"
-echo "  2. (Optional) append devin-rules.snippet.md to your .devin/rules/"
+echo "  2. (Optional) copy devin-rules.snippet.md to .devin/rules/skillopt-sleep.md"
 echo "  3. Ask Devin: 'run the sleep cycle'"
 echo ""
 echo "  Default backend is 'mock' (free). For real optimization:"

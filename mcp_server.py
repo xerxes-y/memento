@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""SkillOpt-Sleep — Windsurf MCP server (stdio, stdlib-only).
+"""SkillOpt-Sleep — Devin MCP server (stdio, stdlib-only).
 
-Exposes the sleep engine as MCP tools so Windsurf/Cascade can drive it.
-Speaks JSON-RPC 2.0 over stdio with just the handful of MCP methods Windsurf
+Exposes the sleep engine as MCP tools so Devin can drive it.
+Speaks JSON-RPC 2.0 over stdio with just the handful of MCP methods Devin
 needs.  No third-party deps beyond the SkillOpt repo itself.
 
-Before each tool call this server runs ``harvest_windsurf.py`` to convert
-locally available Windsurf data (agentmemory memories, .windsurf skill files,
-and extension-host log snippets) into the Claude Code-compatible JSONL
-transcripts that the sleep engine consumes.
+Before each tool call this server runs ``harvest_devin.py`` to convert
+locally available Devin data (ATIF-v1.7 transcripts, agentmemory memories,
+and .devin skill files) into the Claude Code-compatible JSONL transcripts
+that the sleep engine consumes.
 
 After ``sleep_adopt`` the evolved SKILL.md is also synced back into the active
-Windsurf workspace's ``.windsurf/skills/`` directory so Cascade picks it up
-immediately.
+Devin workspace's ``.devin/skills/`` directory so Devin picks it up immediately.
 
 Tools exposed (identical interface to the Copilot plugin):
   sleep_status    show how many nights have run + latest staged proposal
@@ -21,9 +20,9 @@ Tools exposed (identical interface to the Copilot plugin):
   sleep_adopt     apply the latest staged proposal
   sleep_harvest   debug: list mined recurring tasks
 
-Configure Windsurf to launch::
+Configure Devin to launch::
 
-    python plugins/windsurf/mcp_server.py
+    python plugins/devin/mcp_server.py
 
 with ``SKILLOPT_SLEEP_REPO`` set to this repo's root.
 """
@@ -43,8 +42,8 @@ REPO_ROOT = (
 )
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_HOME = os.environ.get(
-    "SKILLOPT_WINDSURF_CLAUDE_HOME",
-    os.path.expanduser("~/.skillopt-sleep-windsurf"),
+    "SKILLOPT_DEVIN_CLAUDE_HOME",
+    os.path.expanduser("~/.skillopt-sleep-devin"),
 )
 MANAGED_SKILL_NAME = os.environ.get("SKILLOPT_MANAGED_SKILL", "skillopt-sleep-learned")
 PROTOCOL_VERSION = "2024-11-05"
@@ -70,13 +69,13 @@ TOOLS = [
         "action": "adopt",
         "description": (
             "Apply the latest staged proposal to the managed SKILL.md. "
-            "Also syncs the evolved skill into the Windsurf workspace so Cascade picks it up immediately."
+            "Also syncs the evolved skill into the Devin workspace so Devin picks it up immediately."
         ),
     },
     {
         "name": "sleep_harvest",
         "action": "harvest",
-        "description": "Debug: list the recurring tasks mined from recent Windsurf sessions.",
+        "description": "Debug: list the recurring tasks mined from recent Devin sessions.",
     },
 ]
 _BY_NAME = {t["name"]: t for t in TOOLS}
@@ -101,7 +100,7 @@ _TOOL_SCHEMA = {
 # ── harvest step ──────────────────────────────────────────────────────────────
 
 def _run_harvest() -> str:
-    harvester = os.path.join(PLUGIN_DIR, "harvest_windsurf.py")
+    harvester = os.path.join(PLUGIN_DIR, "harvest_devin.py")
     env = dict(os.environ)
     env["PYTHONPATH"] = REPO_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     try:
@@ -113,9 +112,9 @@ def _run_harvest() -> str:
         err = (proc.stderr or "").strip()
         return out + (("\n[harvest stderr]\n" + err) if err else "")
     except Exception as exc:
-        return f"[harvest_windsurf] warning: {exc}"
+        return f"[harvest_devin] warning: {exc}"
 
-# ── post-adopt: sync evolved skill into workspace (.windsurf + .devin) ────────
+# ── post-adopt: sync evolved skill into workspace (.devin) ────────────────────
 
 def _sync_skill(project: str) -> str:
     src = os.path.join(CLAUDE_HOME, "skills", MANAGED_SKILL_NAME, "SKILL.md")
@@ -124,10 +123,8 @@ def _sync_skill(project: str) -> str:
     if not project or not os.path.isdir(project):
         return ""
     synced = []
-    for dot_dir in (".windsurf", ".devin"):
-        dot_root = os.path.join(project, dot_dir)
-        if not os.path.isdir(dot_root):
-            continue
+    dot_root = os.path.join(project, ".devin")
+    if os.path.isdir(dot_root):
         dst_dir = os.path.join(dot_root, "skills", MANAGED_SKILL_NAME)
         os.makedirs(dst_dir, exist_ok=True)
         dst = os.path.join(dst_dir, "SKILL.md")
@@ -188,7 +185,7 @@ def handle(req: dict):
         return _result(id_, {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "skillopt-sleep-windsurf", "version": "0.1.0"},
+            "serverInfo": {"name": "skillopt-sleep-devin", "version": "0.1.0"},
         })
     if method in ("notifications/initialized", "initialized"):
         return None

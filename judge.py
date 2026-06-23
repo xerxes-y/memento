@@ -2,7 +2,7 @@
 """Reference judge for SkillOpt-Sleep — score a candidate reply against a rubric.
 
 Tasks harvested without a hard test/build signal get ``verifier: "judge"`` and a
-``rubric`` (see ``_build_rubric`` in harvest_windsurf.py).  This module is the
+``rubric`` (see ``_build_rubric`` in harvest_devin.py).  This module is the
 scorer the validation gate calls for those tasks: given the rubric and a
 candidate reply produced during replay, it returns a score in ``[0, 1]``.  The
 gate accepts a skill edit only if the *new* skill scores strictly higher on the

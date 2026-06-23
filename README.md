@@ -1,63 +1,52 @@
-# skillopt-windsurf
+# SkillOPT-devin
 
-**SkillOpt-Sleep** integration for **Windsurf/Cascade** (Codeium) and **Devin** (Cognition).
+**SkillOpt-Sleep** integration for **Devin** (Cognition).
 
-Gives both agents a nightly *sleep cycle*: reviews past sessions, mines recurring
+Gives Devin a nightly *sleep cycle*: reviews past sessions, mines recurring
 patterns, proposes bounded edits to a long-term `SKILL.md`, and gates every
 change with a held-out validation score — so only improvements that actually
-make the agent better *at your work* get adopted.
+make Devin better *at your work* get adopted.
 
 > Built on [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt).
-> This repo is the Windsurf+Devin plugin (`plugins/windsurf/` contribution).
 
 ---
 
 ## How it works
 
-Neither Windsurf nor Devin write conversation transcripts to disk in a format
-the sleep engine understands.  `harvest_windsurf.py` bridges this by converting
+Devin does not write conversation transcripts to disk in a format
+the sleep engine understands.  `harvest_devin.py` bridges this by converting
 every locally available source into Claude Code-compatible JSONL transcripts:
 
 | Source | Where | What it contributes |
 |---|---|---|
 | **Devin transcripts** | `~/.local/share/devin/cli/transcripts/*.json` | Native ATIF-v1.7 sessions — real user↔agent turns |
 | **agentmemory** | `~/.agentmemory/standalone.json` | Saved memories from the [agentmemory MCP server](https://github.com/agentmemory/agentmemory) |
-| **Skill files** | `.windsurf/skills/*/SKILL.md` and `.devin/skills/*/SKILL.md` | Skill trigger patterns and expected behavior |
-| **Extension logs** | `~/.config/Windsurf/logs/` | Best-effort Cascade task snippets |
+| **Skill files** | `.devin/skills/*/SKILL.md` | Skill trigger patterns and expected behavior |
 
-Workspaces are **auto-detected** from both registries (nothing to configure):
-- Windsurf: `~/.config/Windsurf/User/workspaceStorage/*/workspace.json`
+Workspaces are **auto-detected** from the Devin registry (nothing to configure):
 - Devin: `~/.config/Devin/User/workspaceStorage/*/workspace.json`
 
-After `sleep_adopt` the evolved skill is synced to **both**
-`.windsurf/skills/skillopt-sleep-learned/SKILL.md` **and**
+After `sleep_adopt` the evolved skill is synced to
 `.devin/skills/skillopt-sleep-learned/SKILL.md` automatically.
 
 ---
 
 ## Install
 
-**Requirements:** Python ≥ 3.10, Git. Works with Windsurf, Devin, or both.
+**Requirements:** Python ≥ 3.10, Git, Devin CLI.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/skillopt-windsurf.git
-cd skillopt-windsurf
+git clone https://github.com/xerxes-y/SkillOPT-devin.git
+cd SkillOPT-devin
 bash install.sh
 ```
 
 `install.sh` will:
 1. Use or clone [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt) to `<project-dir>/../SkillOpt` (or `--skillopt-dir`)
 2. Install `skillopt_sleep` (editable) into your Python environment
-3. Create `~/.skillopt-sleep-windsurf/` (runtime data dir)
-4. Seed `skillopt-sleep-learned/SKILL.md` into every detected workspace (`.windsurf/skills/` **and** `.devin/skills/`)
-5. Patch `~/.codeium/windsurf/mcp_config.json` to register the MCP server with Windsurf
-6. Auto-register with **Devin CLI** MCP (`devin mcp add skillopt-sleep`) if the Devin CLI is on PATH
-
-### Windsurf post-install
-
-Reload MCP servers: `Cmd+Shift+P` → *"Windsurf: Reload MCP Servers"*
-
-Optionally append `windsurf-rules.snippet.md` to your `.windsurfrules`.
+3. Create `~/.skillopt-sleep-devin/` (runtime data dir)
+4. Seed `skillopt-sleep-learned/SKILL.md` into every detected Devin workspace (`.devin/skills/`)
+5. Auto-register with **Devin CLI** MCP (`devin mcp add skillopt-sleep`) if the Devin CLI is on PATH
 
 ### Devin post-install
 
@@ -66,40 +55,21 @@ Optionally copy `devin-rules.snippet.md` to `.devin/rules/skillopt-sleep.md` in 
 
 ### Windows
 
-The runtime (`mcp_server.py` + `harvest_windsurf.py`) is cross-platform and
-auto-detects Windsurf/Devin data under `%APPDATA%\Windsurf` (and `%LOCALAPPDATA%`
-for Devin transcripts) — no extra flags needed.
+The runtime (`mcp_server.py` + `harvest_devin.py`) is cross-platform and
+auto-detects Devin data under `%LOCALAPPDATA%\devin\cli\transcripts` — no extra flags needed.
 
 `install.sh` is bash, so run it from **Git Bash** or **WSL**, or wire it up
-manually: add the snippet from `mcp-config.example.json` to
-`%USERPROFILE%\.codeium\windsurf\mcp_config.json` (use `python` instead of
-`python3` and absolute Windows paths in `args`/`env`).
+manually: add the snippet from `mcp-config.example.json` to your Devin MCP config
+(use `python` instead of `python3` and absolute Windows paths in `args`/`env`).
 
 ### Manual config
-
-**Windsurf** — add to `~/.codeium/windsurf/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "skillopt-sleep": {
-      "command": "python3",
-      "args": ["/abs/path/to/skillopt-windsurf/mcp_server.py"],
-      "env": {
-        "SKILLOPT_SLEEP_REPO": "/abs/path/to/SkillOpt",
-        "SKILLOPT_WINDSURF_CLAUDE_HOME": "~/.skillopt-sleep-windsurf"
-      }
-    }
-  }
-}
-```
 
 **Devin** — run once in a terminal:
 
 ```bash
 devin mcp add skillopt-sleep \
   --env "SKILLOPT_SLEEP_REPO=<project-dir>/../SkillOpt" \
-  --env "SKILLOPT_WINDSURF_CLAUDE_HOME=$HOME/.skillopt-sleep-windsurf" \
+  --env "SKILLOPT_DEVIN_CLAUDE_HOME=$HOME/.skillopt-sleep-devin" \
   -- python3 <project-dir>/mcp_server.py
 ```
 
@@ -107,7 +77,7 @@ devin mcp add skillopt-sleep \
 
 ## Use
 
-Ask Cascade or Devin:
+Ask Devin:
 
 > *"run the sleep cycle"*, *"what did the last sleep propose?"*, *"adopt it"*
 
@@ -140,13 +110,13 @@ Each tool accepts:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SKILLOPT_SLEEP_REPO` | `~/.local/share/SkillOpt` | Path to the SkillOpt repo |
-| `SKILLOPT_WINDSURF_CLAUDE_HOME` | `~/.skillopt-sleep-windsurf` | Runtime data dir |
-| `SKILLOPT_WINDSURF_WORKSPACES` | auto-detected | Colon-separated workspace paths |
+| `SKILLOPT_DEVIN_CLAUDE_HOME` | `~/.skillopt-sleep-devin` | Runtime data dir |
+| `SKILLOPT_DEVIN_WORKSPACES` | auto-detected | Colon-separated workspace paths |
 | `SKILLOPT_MANAGED_SKILL` | `skillopt-sleep-learned` | Skill name to evolve |
 
 ---
 
-## Verify (no Windsurf needed)
+## Verify (no Devin session needed)
 
 Run the test suite (stdlib-only, no pytest required):
 
@@ -174,21 +144,20 @@ printf '%s\n' \
 ## Project structure
 
 ```
-skillopt-windsurf/
-├── mcp_server.py              MCP server (stdlib-only, stdio) — Windsurf + Devin
-├── harvest_windsurf.py        Transcript generator (Devin ATIF-v1.7 + agentmemory + skills + logs)
+SkillOPT-devin/
+├── mcp_server.py              MCP server (stdlib-only, stdio) — Devin
+├── harvest_devin.py           Transcript generator (Devin ATIF-v1.7 + agentmemory + skills)
 ├── judge.py                   Reference judge — scores a reply against a rubric (validation gate)
 ├── fixtures/
 │   └── devin_sample.json      Sample ATIF transcript for offline testing
 ├── tests/
 │   └── test_skillopt_sleep.py Test suite (harvest, Devin path, judge, MCP, engine contract)
 ├── blog-skillopt-sleep.html   Walk-through / use-case blog (PO · QA · Developer)
-├── mcp-config.example.json    Windsurf MCP config snippet
-├── windsurf-rules.snippet.md  Paste into .windsurfrules
+├── mcp-config.example.json    Devin MCP config snippet
 ├── devin-rules.snippet.md     Copy to .devin/rules/skillopt-sleep.md
 ├── seed_skill/
 │   └── SKILL.md               Initial skill seed (replaced by sleep_adopt)
-├── install.sh                 One-shot installer (Windsurf + Devin auto-detected)
+├── install.sh                 One-shot installer (Devin auto-detected)
 └── README.md
 ```
 
@@ -197,7 +166,7 @@ skillopt-windsurf/
 ## Outcomes & the validation gate
 
 SkillOpt only improves a skill **where tasks recur and have a checkable
-correctness signal**.  A bare transcript has neither, so `harvest_windsurf.py`
+correctness signal**.  A bare transcript has neither, so `harvest_devin.py`
 enriches Devin trajectories with two things and writes them to
 `<data-dir>/outcomes.jsonl`:
 
@@ -223,15 +192,15 @@ echo "<candidate reply>" | python3 judge.py --rubric-inline '["Addresses OrderSe
 `judge.py` defaults to an offline keyword-coverage heuristic (no API key).
 Set `SKILLOPT_JUDGE=claude` (+ `ANTHROPIC_API_KEY`) for an LLM judge.
 
-> **Reality check:** the hard-signal path only fires if Devin/Windsurf actually
-> record test or build results in their transcripts.  If they don't, every task
+> **Reality check:** the hard-signal path only fires if Devin actually
+> records test or build results in its transcripts.  If it doesn't, every task
 > falls to the `judge` branch — point `--devin-transcripts` at a real transcript
 > dir and inspect `outcomes.jsonl` to find out which case you're in.
 
 Try it on the bundled fixture:
 
 ```bash
-python3 harvest_windsurf.py --devin-transcripts fixtures --out-dir /tmp/skillopt-test
+python3 harvest_devin.py --devin-transcripts fixtures --out-dir /tmp/skillopt-test
 cat /tmp/skillopt-test/outcomes.jsonl
 ```
 
@@ -241,7 +210,7 @@ cat /tmp/skillopt-test/outcomes.jsonl
 
 This plugin is being contributed back to
 [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt) as
-`plugins/windsurf/`.  Bug reports and improvements welcome here or upstream.
+`plugins/devin/`.  Bug reports and improvements welcome here or upstream.
 
 ## License
 
