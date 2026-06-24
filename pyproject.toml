@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "memento-mcp"
+name = "devin-memento"
 version = "0.1.0"
 description = "Memento — a Devin MCP server that gives Devin a nightly sleep cycle to self-improve its SKILL.md."
 readme = "README.md"
@@ -24,7 +24,8 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-memento-mcp = "mcp_server:main"
+devin-memento = "mcp_server:main"
+memento-mcp = "mcp_server:main"  # legacy alias for the console command
 
 [project.urls]
 Homepage = "https://github.com/xerxes-y/memento"

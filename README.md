@@ -27,7 +27,6 @@ Memory is **built in** — `memory_save`/`memory_recall` write the same
 `standalone.json` the harvester reads, so no separate memory MCP is required (it
 stays compatible with [agentmemory](https://github.com/rohitg00/agentmemory) if
 you already use it).
-
 Workspaces are **auto-detected** from the Devin registry (nothing to configure):
 - Devin: `~/.config/Devin/User/workspaceStorage/*/workspace.json`
 
@@ -82,8 +81,9 @@ devin mcp add memento \
 
 ## Add to Devin as an MCP extension (`uvx`, one line)
 
-`memento` ships a console entrypoint (`memento-mcp`), so it runs as a self-contained
-package with no clone or path wiring — ideal for Devin's **custom MCP** UI
+memento is published to PyPI as **[`devin-memento`](https://pypi.org/project/devin-memento/)**
+with a `devin-memento` console entrypoint, so it runs as a self-contained package
+with no clone or path wiring — ideal for Devin's **custom MCP** UI
 (*Settings → Connections → MCP servers → Add a custom MCP → STDIO*) or the
 `devin mcp add` CLI.
 
@@ -92,7 +92,7 @@ package with no clone or path wiring — ideal for Devin's **custom MCP** UI
 | Field | Value |
 |---|---|
 | Command | `uvx` |
-| Args | `["--from", "git+https://github.com/xerxes-y/memento", "memento-mcp"]` |
+| Args | `["devin-memento"]` |
 | Env | `MEMENTO_ENGINE_REPO`, `MEMENTO_HOME` |
 
 Or via the CLI:
@@ -101,11 +101,13 @@ Or via the CLI:
 devin mcp add memento \
   --env "MEMENTO_ENGINE_REPO=$HOME/.local/share/SkillOpt" \
   --env "MEMENTO_HOME=$HOME/.memento" \
-  -- uvx --from git+https://github.com/xerxes-y/memento memento-mcp
+  -- uvx devin-memento
 ```
 
-Once published to PyPI the `--from …` drops out — the args become just
-`["memento-mcp"]` (`uvx memento-mcp`):
+To run the unreleased `main` instead of the PyPI release, swap the args for
+`["--from", "git+https://github.com/xerxes-y/memento", "devin-memento"]`.
+
+Maintainers cut a release with:
 
 ```bash
 python3 -m build && python3 -m twine upload dist/*
