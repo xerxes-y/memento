@@ -205,9 +205,13 @@ class TestMcpProtocol(unittest.TestCase):
         tools = resp["result"]["tools"]
         names = {t["name"] for t in tools}
         self.assertEqual(names, {"memento_status", "memento_dry_run", "memento_run",
-                                 "memento_adopt", "memento_harvest", "memento_auto"})
+                                 "memento_adopt", "memento_harvest", "memento_auto",
+                                 "memory_save", "memory_recall"})
         for t in tools:
             self.assertIn("inputSchema", t)
+        # memory_save advertises its own schema, not the shared engine schema
+        save = next(t for t in tools if t["name"] == "memory_save")
+        self.assertEqual(set(save["inputSchema"]["required"]), {"title", "content"})
 
     def test_unknown_method(self):
         resp = mcp_server.handle({"jsonrpc": "2.0", "id": 3, "method": "bogus"})
@@ -331,6 +335,53 @@ class TestSleepAuto(unittest.TestCase):
                          {"project": "/p", "backend": "claude", "scope": "all"})
 
 
+class TestMemoryStore(unittest.TestCase):
+    """Native memory tools write the agentmemory-compatible standalone.json."""
+
+    def setUp(self):
+        self._orig_path = mcp_server.MEMORY_PATH
+        self._dir = tempfile.mkdtemp()
+        mcp_server.MEMORY_PATH = os.path.join(self._dir, "standalone.json")
+
+    def tearDown(self):
+        mcp_server.MEMORY_PATH = self._orig_path
+
+    def test_save_writes_harvester_compatible_format(self):
+        out = mcp_server._save_memory("Use rtk for builds", "Run `rtk mvn test`.")
+        self.assertIn("saved", out)
+        mems = _read_json(mcp_server.MEMORY_PATH)["mem:memories"]
+        self.assertEqual(len(mems), 1)
+        mem = next(iter(mems.values()))
+        self.assertEqual(mem["title"], "Use rtk for builds")
+        self.assertIn("rtk", mem["content"])
+        # the harvester reads exactly this shape
+        n = hw.harvest_agentmemory(mcp_server.MEMORY_PATH, self._dir, ["/tmp/p"])
+        self.assertEqual(n, 1)
+
+    def test_save_requires_both_fields(self):
+        out = mcp_server._save_memory("", "content only")
+        self.assertIn("error", out)
+        self.assertFalse(os.path.exists(mcp_server.MEMORY_PATH))
+
+    def test_save_is_idempotent_on_identical_content(self):
+        mcp_server._save_memory("t", "c")
+        mcp_server._save_memory("t", "c")
+        mems = _read_json(mcp_server.MEMORY_PATH)["mem:memories"]
+        self.assertEqual(len(mems), 1)
+
+    def test_recall_filters_by_query(self):
+        mcp_server._save_memory("Build tip", "use rtk mvn test")
+        mcp_server._save_memory("Style", "prefer black formatting")
+        self.assertIn("Build tip", mcp_server._recall_memories("rtk", None))
+        self.assertNotIn("Style", mcp_server._recall_memories("rtk", None))
+        self.assertEqual(mcp_server._recall_memories("nomatch", None),
+                         "[memory] no memories found.")
+
+    def test_recall_on_empty_store(self):
+        self.assertEqual(mcp_server._recall_memories(None, None),
+                         "[memory] no memories found.")
+
+
 _HAS_ENGINE = importlib.util.find_spec("skillopt_sleep") is not None
 
 
@@ -350,6 +401,11 @@ class TestSkillOptIntegration(unittest.TestCase):
 def _read_jsonl(path):
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def _read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def _find_session_jsonl(out_dir):

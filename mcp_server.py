@@ -20,6 +20,8 @@ Tools exposed (identical interface to the Copilot plugin):
   memento_adopt     apply the latest staged proposal
   memento_harvest   debug: list mined recurring tasks
   memento_auto      run + auto-adopt above the gate; report the SKILL.md diff
+  memory_save       persist a memory (title+content) to the built-in store
+  memory_recall     list/search saved memories
 
 Configure Devin to launch::
 
@@ -30,6 +32,7 @@ with ``MEMENTO_ENGINE_REPO`` set to this repo's root.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -49,6 +52,12 @@ CLAUDE_HOME = os.environ.get(
     os.path.expanduser("~/.memento"),
 )
 MANAGED_SKILL_NAME = os.environ.get("MEMENTO_MANAGED_SKILL", "memento-learned")
+# Native memory store. Defaults to the agentmemory-compatible path the harvester
+# already reads, so saved memories feed the next sleep cycle with no extra wiring.
+MEMORY_PATH = os.environ.get(
+    "MEMENTO_MEMORY_PATH",
+    os.path.expanduser("~/.agentmemory/standalone.json"),
+)
 PROTOCOL_VERSION = "2024-11-05"
 
 TOOLS = [
@@ -89,6 +98,37 @@ TOOLS = [
             "an optional MEMENTO_AUTO_ADOPT_MIN_SCORE floor. Returns a before/after "
             "diff report of the SKILL.md change so the user can see what changed."
         ),
+    },
+    {
+        "name": "memory_save",
+        "action": "memory_save",
+        "description": (
+            "Persist a memory (title + content) to memento's built-in store. "
+            "Saved memories feed the next sleep cycle automatically — no external "
+            "MCP needed."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Short label for the memory."},
+                "content": {"type": "string", "description": "The memory text to persist."},
+            },
+            "required": ["title", "content"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_recall",
+        "action": "memory_recall",
+        "description": "List or search saved memories (optionally filtered by a query substring).",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Substring filter over title/content (optional)."},
+                "limit": {"type": "integer", "description": "Max results (default 10)."},
+            },
+            "additionalProperties": False,
+        },
     },
 ]
 _BY_NAME = {t["name"]: t for t in TOOLS}
@@ -262,6 +302,56 @@ def _run_auto(args: dict) -> str:
                       "(engine staged nothing, or the proposal was empty).")
     return "\n".join(report)
 
+# ── native memory store (agentmemory-compatible standalone.json) ──────────────
+
+def _load_memories() -> dict:
+    try:
+        with open(MEMORY_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data.get("mem:memories"), dict):
+        data["mem:memories"] = {}
+    return data
+
+
+def _save_memory(title: str, content: str) -> str:
+    title = (title or "").strip()
+    content = (content or "").strip()
+    if not title or not content:
+        return "[memory] error: both 'title' and 'content' are required."
+    data = _load_memories()
+    mems = data["mem:memories"]
+    mem_id = "mem-" + hashlib.sha1(
+        (title + "\x00" + content).encode("utf-8")).hexdigest()[:12]
+    mems[mem_id] = {"title": title, "content": content}
+    os.makedirs(os.path.dirname(MEMORY_PATH) or ".", exist_ok=True)
+    tmp = MEMORY_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, MEMORY_PATH)
+    return (f"[memory] saved ({mem_id}): {title}\n"
+            f"[memory] {len(mems)} total → {MEMORY_PATH}")
+
+
+def _recall_memories(query, limit) -> str:
+    items = list(_load_memories()["mem:memories"].items())
+    q = str(query or "").strip().lower()
+    if q:
+        items = [(i, m) for i, m in items
+                 if q in str(m.get("title", "")).lower()
+                 or q in str(m.get("content", "")).lower()]
+    try:
+        n = int(limit) if limit else 10
+    except (ValueError, TypeError):
+        n = 10
+    items = items[:max(0, n)]
+    if not items:
+        return "[memory] no memories found."
+    lines = [f"- {m.get('title', '')}: {str(m.get('content', '')).strip()[:200]}"
+             for _, m in items]
+    return f"[memory] {len(items)} memory(ies):\n" + "\n".join(lines)
+
 # ── JSON-RPC / MCP plumbing ───────────────────────────────────────────────────
 
 def _result(id_, result):
@@ -286,7 +376,7 @@ def handle(req: dict):
     if method == "tools/list":
         return _result(id_, {"tools": [
             {"name": t["name"], "description": t["description"],
-             "inputSchema": _TOOL_SCHEMA}
+             "inputSchema": t.get("schema", _TOOL_SCHEMA)}
             for t in TOOLS
         ]})
     if method == "tools/call":
@@ -296,10 +386,15 @@ def handle(req: dict):
         if not tool:
             return _error(id_, -32602, f"unknown tool: {name}")
         tool_args = params.get("arguments") or {}
-        if tool["action"] == "auto":
+        action = tool["action"]
+        if action == "auto":
             text = _run_auto(tool_args)
+        elif action == "memory_save":
+            text = _save_memory(tool_args.get("title"), tool_args.get("content"))
+        elif action == "memory_recall":
+            text = _recall_memories(tool_args.get("query"), tool_args.get("limit"))
         else:
-            text = _run_engine(tool["action"], tool_args)
+            text = _run_engine(action, tool_args)
         return _result(id_, {"content": [{"type": "text", "text": text}]})
     if method == "ping":
         return _result(id_, {})

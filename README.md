@@ -20,8 +20,13 @@ every locally available source into Claude Code-compatible JSONL transcripts:
 | Source | Where | What it contributes |
 |---|---|---|
 | **Devin transcripts** | `~/.local/share/devin/cli/transcripts/*.json` | Native ATIF-v1.7 sessions — real user↔agent turns |
-| **agentmemory** | `~/.agentmemory/standalone.json` | Saved memories from the [agentmemory MCP server](https://github.com/agentmemory/agentmemory) |
+| **Memories** | `~/.agentmemory/standalone.json` | Memories saved via memento's built-in `memory_save` tool (or the [agentmemory MCP server](https://github.com/rohitg00/agentmemory) if you run it) |
 | **Skill files** | `.devin/skills/*/SKILL.md` | Skill trigger patterns and expected behavior |
+
+Memory is **built in** — `memory_save`/`memory_recall` write the same
+`standalone.json` the harvester reads, so no separate memory MCP is required (it
+stays compatible with [agentmemory](https://github.com/rohitg00/agentmemory) if
+you already use it).
 
 Workspaces are **auto-detected** from the Devin registry (nothing to configure):
 - Devin: `~/.config/Devin/User/workspaceStorage/*/workspace.json`
@@ -129,6 +134,8 @@ Or call tools directly:
 | `memento_run` | full cycle; stages a proposal for your review |
 | `memento_adopt` | apply the staged proposal; syncs skill to workspace |
 | `memento_harvest` | debug: list the recurring tasks mined |
+| `memory_save` | persist a memory (`title` + `content`) to the built-in store |
+| `memory_recall` | list/search saved memories (optional `query`, `limit`) |
 
 Each tool accepts:
 
@@ -178,6 +185,7 @@ go to `~/.memento/memento-auto.log`. Remove with
 | `MEMENTO_HOME` | `~/.memento` | Runtime data dir |
 | `MEMENTO_WORKSPACES` | auto-detected | Colon-separated workspace paths |
 | `MEMENTO_MANAGED_SKILL` | `memento-learned` | Skill name to evolve |
+| `MEMENTO_MEMORY_PATH` | `~/.agentmemory/standalone.json` | Where `memory_save`/`memory_recall` store memories |
 | `MEMENTO_AUTO_ADOPT_MIN_SCORE` | unset | Optional floor for `memento_auto`; skip adopt if the parsed validation score is below it (the engine's own gate still applies) |
 
 ---
