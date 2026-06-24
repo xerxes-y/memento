@@ -75,6 +75,44 @@ devin mcp add memento \
 
 ---
 
+## Add to Devin as an MCP extension (`uvx`, one line)
+
+`memento` ships a console entrypoint (`memento-mcp`), so it runs as a self-contained
+package with no clone or path wiring — ideal for Devin's **custom MCP** UI
+(*Settings → Connections → MCP servers → Add a custom MCP → STDIO*) or the
+`devin mcp add` CLI.
+
+**STDIO config (Devin custom MCP):**
+
+| Field | Value |
+|---|---|
+| Command | `uvx` |
+| Args | `["--from", "git+https://github.com/xerxes-y/memento", "memento-mcp"]` |
+| Env | `MEMENTO_ENGINE_REPO`, `MEMENTO_HOME` |
+
+Or via the CLI:
+
+```bash
+devin mcp add memento \
+  --env "MEMENTO_ENGINE_REPO=$HOME/.local/share/SkillOpt" \
+  --env "MEMENTO_HOME=$HOME/.memento" \
+  -- uvx --from git+https://github.com/xerxes-y/memento memento-mcp
+```
+
+Once published to PyPI the `--from …` drops out — the args become just
+`["memento-mcp"]` (`uvx memento-mcp`):
+
+```bash
+python3 -m build && python3 -m twine upload dist/*
+```
+
+> The optimization engine (`skillopt_sleep`) is loaded at runtime from
+> `MEMENTO_ENGINE_REPO` (a local SkillOpt clone), so it works inside the isolated
+> `uvx` env without being on PyPI. Point `MEMENTO_ENGINE_REPO` at a clone (or run
+> `install.sh` once to create one).
+
+---
+
 ## Use
 
 Ask Devin:
@@ -186,6 +224,7 @@ memento/
 ├── seed_skill/
 │   └── SKILL.md               Initial skill seed (replaced by memento_adopt)
 ├── install.sh                 One-shot installer (Devin auto-detected)
+├── pyproject.toml             Packaging — `memento-mcp` console entrypoint (uvx/pip)
 └── README.md
 ```
 
