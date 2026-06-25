@@ -323,7 +323,9 @@ When `MEMENTO_DB_URL` is a postgres DSN, the engine transparently uses the
 [`memento_memory_pg`](memento_memory_pg.py) backend instead of SQLite — same MCP
 tools, same dashboard (`mcp_server.py --web` then serves the **team's** memory).
 Use the `namespace` argument on `memory_save`/`memory_recall` as the team/scope
-boundary. **pgvector** ANN activates automatically once a dense embedder is
+boundary — the **dashboard has a team selector** (sidebar) that scopes the
+memory list, graph, and lessons to one namespace. **pgvector** ANN activates
+automatically once a dense embedder is
 configured; otherwise vector search uses the built-in lexical cosine (works on
 plain Postgres). Validate with `MEMENTO_TEST_PG_DSN=… python3 -m unittest discover -s tests`.
 

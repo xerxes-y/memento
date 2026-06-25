@@ -276,25 +276,25 @@ class MemoryStorePG:
                 "GROUP BY m.id ORDER BY shared DESC, m.created_ts DESC LIMIT %s",
                 (ents, mem_id, int(limit))).fetchall()
 
-    def graph(self, limit=40):
+    def graph(self, limit=40, namespace=None):
+        nw = " WHERE m.namespace=%s" if namespace else ""
+        np = [namespace] if namespace else []
         with self._conn() as c:
-            ents = c.execute(
-                "SELECT entity, COUNT(*) AS n FROM mem_entities "
-                "GROUP BY entity ORDER BY n DESC LIMIT %s", (int(limit),)).fetchall()
-            names = [e["entity"] for e in ents]
-            edges, mem_ids = [], set()
-            if names:
-                for r in c.execute("SELECT mem_id, entity FROM mem_entities "
-                                   "WHERE entity = ANY(%s)", (names,)).fetchall():
-                    edges.append({"mem": r["mem_id"], "entity": r["entity"]})
-                    mem_ids.add(r["mem_id"])
-            mems = []
-            if mem_ids:
-                mems = [{"id": r["id"], "title": r["title"], "tier": r["tier"]}
-                        for r in c.execute("SELECT id,title,tier FROM memories "
-                                           "WHERE id = ANY(%s)", (list(mem_ids),)).fetchall()]
-            return {"entities": [{"name": e["entity"], "count": e["n"]} for e in ents],
-                    "memories": mems, "edges": edges}
+            rows = c.execute(
+                "SELECT e.mem_id AS mem_id, e.entity AS entity, m.title AS title, "
+                "m.tier AS tier FROM mem_entities e JOIN memories m ON m.id=e.mem_id"
+                + nw, np).fetchall()
+        counts, mems, all_edges = {}, {}, []
+        for r in rows:
+            counts[r["entity"]] = counts.get(r["entity"], 0) + 1
+            mems[r["mem_id"]] = {"id": r["mem_id"], "title": r["title"], "tier": r["tier"]}
+            all_edges.append({"mem": r["mem_id"], "entity": r["entity"]})
+        top = sorted(counts.items(), key=lambda x: -x[1])[:int(limit)]
+        keep = {n for n, _ in top}
+        edges = [e for e in all_edges if e["entity"] in keep]
+        used = {e["mem"] for e in edges}
+        return {"entities": [{"name": n, "count": c} for n, c in top],
+                "memories": [mems[i] for i in used], "edges": edges}
 
     def consolidate(self, now=None):
         now = now if now is not None else time.time()
@@ -368,14 +368,17 @@ class MemoryStorePG:
             created.append((mid, "failures"))
         return created
 
-    def lessons(self, limit=20):
+    def lessons(self, limit=20, namespace=None):
+        nw = " AND namespace=%s" if namespace else ""
+        np = [namespace] if namespace else []
         with self._conn() as c:
-            return c.execute("SELECT * FROM memories WHERE source='lesson' "
-                             "ORDER BY pinned DESC, created_ts DESC LIMIT %s",
-                             (int(limit),)).fetchall()
+            return c.execute("SELECT * FROM memories WHERE source='lesson'" + nw +
+                             " ORDER BY pinned DESC, created_ts DESC LIMIT %s",
+                             np + [int(limit)]).fetchall()
 
-    def add_lesson(self, title, content):
-        mid = self.save(title, content, tier="semantic", tags="lesson", source="lesson")
+    def add_lesson(self, title, content, namespace=DEFAULT_NAMESPACE):
+        mid = self.save(title, content, tier="semantic", tags="lesson",
+                        source="lesson", namespace=namespace)
         self.pin(mid, True)
         return mid
 

@@ -383,28 +383,27 @@ class MemoryStore:
                 % ",".join("?" * len(ents)), ents + [mem_id, int(limit)])
             return [self._row(r) for r in rows]
 
-    def graph(self, limit=40) -> dict:
-        """Entities, the memories they touch, and edges — for the graph viz."""
+    def graph(self, limit=40, namespace=None) -> dict:
+        """Entities, the memories they touch, and edges — for the graph viz.
+        Scoped to one namespace (team) when given."""
+        nw = " WHERE m.namespace=?" if namespace else ""
+        np = [namespace] if namespace else []
         with self._connect() as c:
-            ents = c.execute(
-                "SELECT entity, COUNT(*) AS n FROM mem_entities "
-                "GROUP BY entity ORDER BY n DESC LIMIT ?", (int(limit),)).fetchall()
-            names = [e["entity"] for e in ents]
-            edges, mem_ids = [], set()
-            if names:
-                for r in c.execute(
-                        "SELECT mem_id, entity FROM mem_entities WHERE entity IN (%s)"
-                        % ",".join("?" * len(names)), names):
-                    edges.append({"mem": r["mem_id"], "entity": r["entity"]})
-                    mem_ids.add(r["mem_id"])
-            mems = []
-            if mem_ids:
-                for r in c.execute(
-                        "SELECT id,title,tier FROM memories WHERE id IN (%s)"
-                        % ",".join("?" * len(mem_ids)), list(mem_ids)):
-                    mems.append({"id": r["id"], "title": r["title"], "tier": r["tier"]})
-            return {"entities": [{"name": e["entity"], "count": e["n"]} for e in ents],
-                    "memories": mems, "edges": edges}
+            rows = c.execute(
+                "SELECT e.mem_id AS mem_id, e.entity AS entity, m.title AS title, "
+                "m.tier AS tier FROM mem_entities e JOIN memories m ON m.id=e.mem_id"
+                + nw, np).fetchall()
+        counts, mems, all_edges = {}, {}, []
+        for r in rows:
+            counts[r["entity"]] = counts.get(r["entity"], 0) + 1
+            mems[r["mem_id"]] = {"id": r["mem_id"], "title": r["title"], "tier": r["tier"]}
+            all_edges.append({"mem": r["mem_id"], "entity": r["entity"]})
+        top = sorted(counts.items(), key=lambda x: -x[1])[:int(limit)]
+        keep = {n for n, _ in top}
+        edges = [e for e in all_edges if e["entity"] in keep]
+        used = {e["mem"] for e in edges}
+        return {"entities": [{"name": n, "count": c} for n, c in top],
+                "memories": [mems[i] for i in used], "edges": edges}
 
     # ── lifecycle: decay + consolidation (Phase 4) ────────────────────────────
 
@@ -504,16 +503,18 @@ class MemoryStore:
             created.append((mid, "failures"))
         return created
 
-    def lessons(self, limit=20) -> list:
+    def lessons(self, limit=20, namespace=None) -> list:
+        nw = " AND namespace=?" if namespace else ""
+        np = [namespace] if namespace else []
         with self._connect() as c:
             return [self._row(r) for r in c.execute(
-                "SELECT * FROM memories WHERE source='lesson' "
-                "ORDER BY pinned DESC, created_ts DESC LIMIT ?", (int(limit),))]
+                "SELECT * FROM memories WHERE source='lesson'" + nw +
+                " ORDER BY pinned DESC, created_ts DESC LIMIT ?", np + [int(limit)])]
 
-    def add_lesson(self, title, content) -> str:
+    def add_lesson(self, title, content, namespace=DEFAULT_NAMESPACE) -> str:
         """Manually author a lesson. Pinned, so memory_learn never wipes it."""
         mid = self.save(title, content, tier="semantic", tags="lesson",
-                        source="lesson")
+                        source="lesson", namespace=namespace)
         self.pin(mid, True)
         return mid
 
@@ -665,6 +666,8 @@ input,textarea{width:100%}.row{display:flex;gap:10px;margin:8px 0}.row>*{flex:1}
   <button data-v=sessions>Sessions</button>
   <button data-v=activity>Activity</button>
  </nav>
+ <select id=ns onchange=setNS() title="team / namespace"
+   style="width:100%;margin-top:12px"><option value="">all teams</option></select>
  <div class=foot id=foot></div>
 </aside>
 <main id=main></main>
@@ -678,6 +681,13 @@ const post=async(p,b)=>(await fetch(p,{method:'POST',headers:{'content-type':'ap
 function toast(m){const t=$('#toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,1800);}
 function badge(t){return `<span class=badge style="background:${(TC[t]||'#888')}22;color:${TC[t]||'#aaa'}">${t}</span>`;}
 
+let NS='';
+const nsq=p=>NS?(p+(p.includes('?')?'&':'?')+'ns='+encodeURIComponent(NS)):p;
+function setNS(){NS=$('#ns').value;nav(location.hash.slice(1)||'overview');}
+async function loadNS(){const d=await api('/api/namespaces');
+ $('#ns').innerHTML='<option value="">all teams</option>'+
+  d.namespaces.map(n=>`<option value="${esc(n.namespace)}">${esc(n.namespace)} ·${n.n}</option>`).join('');
+ $('#ns').value=NS;}
 function nav(v){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));
  ({overview:overview,memories:memories,graph:graphView,lessons:lessons,sessions:sessions,activity:activity}[v]||overview)();}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>location.hash=b.dataset.v);
@@ -718,7 +728,7 @@ async function memories(){
  loadMem();
 }
 async function loadMem(){
- const d=await api('/api/memories?q='+encodeURIComponent($('#q').value)+'&tier='+($('#ft').value||''));
+ const d=await api(nsq('/api/memories?q='+encodeURIComponent($('#q').value)+'&tier='+($('#ft').value||'')));
  $('#list').innerHTML=d.memories.map(m=>`<div class=card>
   <span class=act onclick="mforget('${m.id}')">forget ✕</span>
   <span class="act pin" onclick="mpin('${m.id}',${m.pinned?0:1})">${m.pinned?'📌 pinned':'pin'}</span>
@@ -727,13 +737,13 @@ async function loadMem(){
    <span>${new Date(m.created_ts*1000).toLocaleString()}</span></div></div>`).join('')||'<p class=sub>No memories.</p>';
  setFoot();
 }
-async function saveMem(){const r=await post('/api/memories',{title:$('#mt').value,content:$('#mc').value,tier:$('#mtier').value,tags:$('#mtags').value});
+async function saveMem(){const r=await post('/api/memories',{title:$('#mt').value,content:$('#mc').value,tier:$('#mtier').value,tags:$('#mtags').value,namespace:NS||'default'});
  if(r.error){toast(r.error);return;}$('#mt').value=$('#mc').value=$('#mtags').value='';toast('saved');loadMem();}
 async function mforget(id){await post('/api/forget',{id});toast('forgotten');loadMem();}
 async function mpin(id,p){await post('/api/pin',{id,pinned:!!p});loadMem();}
 
 async function lessons(){
- const d=await api('/api/lessons');
+ const d=await api(nsq('/api/lessons'));
  $('#main').innerHTML=`<h2>Lessons</h2><p class=sub>insights derived from recurring patterns — or pin your own</p>
  <div class=card><button class=btn onclick=doLearn()>✨ Learn now</button>
   <span class=sub style=margin-left:10px>mines recurring entities, tags & failures into the semantic tier</span></div>
@@ -746,7 +756,7 @@ async function lessons(){
    <div style=margin-top:6px>${esc(m.content)}</div></div>`).join('')||'<p class=sub>No lessons yet — click Learn now or add one.</p>'}</div>`;
 }
 async function doLearn(){const r=await post('/api/learn',{});toast('derived '+(r.created||[]).length+' lesson(s)');lessons();}
-async function doAddLesson(){const r=await post('/api/lesson',{title:$('#lt').value,content:$('#lc').value});
+async function doAddLesson(){const r=await post('/api/lesson',{title:$('#lt').value,content:$('#lc').value,namespace:NS||'default'});
  if(r.error){toast(r.error);return;}toast('lesson pinned');lessons();}
 
 async function sessions(){
@@ -768,7 +778,7 @@ let RAF=null;
 async function graphView(){
  $('#main').innerHTML=`<h2>Knowledge graph</h2><p class=sub>entities ◯ and the memories ● that mention them · drag nodes</p>
   <canvas id=cv></canvas>`;
- const g=await api('/api/graph');
+ const g=await api(nsq('/api/graph'));
  const cv=$('#cv');cv.width=cv.clientWidth;cv.height=cv.clientHeight;
  const ents=g.entities.map(e=>({id:'e:'+e.name,label:e.name,type:'e',r:9+Math.min(16,e.count*3)}));
  const mems=g.memories.map(m=>({id:'m:'+m.id,label:m.title,type:'m',tier:m.tier,r:6}));
@@ -802,7 +812,7 @@ async function graphView(){
 
 async function setFoot(){const s=await api('/api/stats');
  $('#foot').textContent=(s.mode||'solo')+' · '+(s.backend||'sqlite')+' · '+s.db;}
-nav(location.hash.slice(1)||'overview');setFoot();
+loadNS();nav(location.hash.slice(1)||'overview');setFoot();
 </script></body></html>"""
 
 
@@ -829,24 +839,28 @@ def _make_handler(store):
         def do_GET(self):
             from urllib.parse import urlparse, parse_qs
             u = urlparse(self.path)
+            qs = parse_qs(u.query)
+            ns = (qs.get("ns") or [None])[0] or None
             if u.path in ("/", "/index.html"):
                 return self._send(200, _PAGE, "text/html; charset=utf-8")
             if u.path == "/api/stats":
                 return self._send(200, json.dumps(store.stats()))
+            if u.path == "/api/namespaces":
+                return self._send(200, json.dumps({"namespaces": store.namespaces()}))
             if u.path == "/api/graph":
-                return self._send(200, json.dumps(store.graph()))
+                return self._send(200, json.dumps(store.graph(namespace=ns)))
             if u.path == "/api/lessons":
-                return self._send(200, json.dumps({"lessons": store.lessons(limit=100)}))
+                return self._send(200, json.dumps(
+                    {"lessons": store.lessons(limit=100, namespace=ns)}))
             if u.path == "/api/sessions":
                 return self._send(200, json.dumps({"sessions": store.sessions()}))
             if u.path == "/api/audit":
                 return self._send(200, json.dumps({"audit": store.audit_log(limit=100)}))
             if u.path == "/api/memories":
-                qs = parse_qs(u.query)
                 q = (qs.get("q") or [""])[0]
                 tier = (qs.get("tier") or [None])[0]
                 return self._send(200, json.dumps(
-                    {"memories": store.search(q, limit=200, tier=tier)}))
+                    {"memories": store.search(q, limit=200, tier=tier, namespace=ns)}))
             return self._send(404, json.dumps({"error": "not found"}))
 
         def do_POST(self):
@@ -874,7 +888,8 @@ def _make_handler(store):
                     {"created": [{"id": i, "label": lbl} for i, lbl in created]}))
             if path == "/api/lesson":
                 try:
-                    mid = store.add_lesson(body.get("title"), body.get("content"))
+                    mid = store.add_lesson(body.get("title"), body.get("content"),
+                                           namespace=body.get("namespace") or "default")
                     return self._send(200, json.dumps({"id": mid}))
                 except ValueError as e:
                     return self._send(400, json.dumps({"error": str(e)}))
