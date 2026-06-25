@@ -556,7 +556,9 @@ def _memory_sessions(_args: dict) -> str:
 def _memory_stats(_args: dict) -> str:
     s = _store().stats()
     tiers = ", ".join(f"{k}={v}" for k, v in s["by_tier"].items()) or "none"
-    return (f"[memory] {s['total']} total ({tiers}); "
+    mode = s.get("mode", "solo")
+    return (f"[memory] {mode} mode ({s.get('backend', 'sqlite')}); "
+            f"{s['total']} total ({tiers}); "
             f"bm25={'on' if s['fts'] else 'off (LIKE fallback)'}; db={s['db']}")
 
 

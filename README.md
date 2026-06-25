@@ -241,7 +241,18 @@ go to `~/.memento/memento-auto.log`. Remove with
 
 memento ships its **own** agentmemory-class memory engine
 ([`memento_memory.py`](memento_memory.py)) — no external memory MCP, no Node.
-**stdlib-only** (SQLite + `http.server` + `math`):
+**stdlib-only** (SQLite + `http.server` + `math`).
+
+**Two modes, identical tools & dashboard** — chosen automatically by `open_store()`:
+
+| Mode | When | Storage |
+|---|---|---|
+| **Solo** (default) | no config | local SQLite at `~/.memento/memory.db` |
+| **Team** | `MEMENTO_DB_URL` = a Postgres DSN | shared Postgres, scoped per team by `namespace` — see [Team memory](#team-memory-shared-postgres) |
+
+Solo needs zero setup; switching to team is one env var, nothing else changes
+(same `memory_*` tools, same web dashboard). The active mode is shown by
+`memory_stats` and in the dashboard footer. Core features in both modes:
 
 - **Hybrid retrieval** — **BM25** full-text (FTS5, `LIKE` fallback) **fused with
   semantic vector** similarity via **Reciprocal Rank Fusion** (`mode`:

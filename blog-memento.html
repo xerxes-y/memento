@@ -1215,6 +1215,27 @@
       all browsable in a local <strong>web dashboard</strong>.
     </p>
 
+    <div class="two-col">
+      <div class="solution-box">
+        <h4>👤 Solo mode (default)</h4>
+        <ul>
+          <li>Zero config — local <strong>SQLite</strong> at <code>~/.memento/memory.db</code></li>
+          <li>Everything runs on your machine; nothing leaves it</li>
+        </ul>
+      </div>
+      <div class="solution-box">
+        <h4>👥 Team mode</h4>
+        <ul>
+          <li>Set <code>MEMENTO_DB_URL</code> to a shared <strong>Postgres</strong> (pgvector)</li>
+          <li>Whole team reads/writes one store, scoped per team by <code>namespace</code></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:12px;">
+      Same tools and the same dashboard in both modes — switching from solo to a
+      shared team brain is a single environment variable.
+    </p>
+
     <img src="assets/dashboard/overview.png" alt="Dashboard — overview" style="width:100%;border:1px solid var(--border);border-radius:var(--radius);margin:12px 0;" />
 
     <div class="two-col">

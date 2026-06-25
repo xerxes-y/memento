@@ -401,7 +401,7 @@ class MemoryStorePG:
             namespaces = c.execute(
                 "SELECT COUNT(DISTINCT namespace) AS n FROM memories").fetchone()["n"]
         return {"total": total, "by_tier": by_tier, "entities": entities,
-                "namespaces": namespaces, "fts": True,
+                "namespaces": namespaces, "fts": True, "mode": "team",
                 "backend": "postgres" + ("+pgvector" if self.pgvector else ""),
                 "db": "postgresql"}
 

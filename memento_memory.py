@@ -583,7 +583,8 @@ class MemoryStore:
             namespaces = c.execute(
                 "SELECT COUNT(DISTINCT namespace) FROM memories").fetchone()[0]
         return {"total": total, "by_tier": by_tier, "entities": entities,
-                "namespaces": namespaces, "fts": self.fts, "db": self.db_path}
+                "namespaces": namespaces, "fts": self.fts, "db": self.db_path,
+                "mode": "solo", "backend": "sqlite"}
 
     def _export(self):
         try:
@@ -799,7 +800,8 @@ async function graphView(){
   RAF=requestAnimationFrame(step);})();
 }
 
-async function setFoot(){const s=await api('/api/stats');$('#foot').textContent=s.db;}
+async function setFoot(){const s=await api('/api/stats');
+ $('#foot').textContent=(s.mode||'solo')+' · '+(s.backend||'sqlite')+' · '+s.db;}
 nav(location.hash.slice(1)||'overview');setFoot();
 </script></body></html>"""
 
