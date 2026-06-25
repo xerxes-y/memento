@@ -57,8 +57,25 @@ $ printf '%s\n' \
 #             [sleep] no staged proposals yet.
 ```
 
-`tools/list` exposes the standard interface:
-`['sleep_status','sleep_dry_run','sleep_run','sleep_adopt','sleep_harvest']`.
+`tools/list` exposes the standard interface (now 7 tools incl. schedule).
+
+**Full `sleep_dry_run` end-to-end (mock backend):**
+
+```
+$ # ...sleep_dry_run tools/call through mcp_server.py
+[harvest]  [harvest_devin] devin: 1 sessions → 1 synthetic session
+[engine]   [sleep] night 1: 1 sessions -> 1 tasks
+           [sleep] held-out 0.000 -> 0.000 => reject (accepted=False)
+```
+
+i.e. harvest → mine → replay → **held-out gate** all run; the mock backend
+correctly rejects (no real improvement).
+
+While validating this I found and fixed a real integration bug: a harvested
+**single-turn** Devin session spanned only 1s, which the engine's harvest filter
+classifies as a `<3s` headless replay (Issue #62) and skips — so it mined 0
+tasks. Widening the prompt→reply gap to 5s fixes it (the run above mines the task
+correctly).
 
 ## 3. Schema / tool parity with copilot
 

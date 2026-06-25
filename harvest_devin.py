@@ -184,7 +184,10 @@ def _write_session(
                 # grouping key so the miner can collapse repeats into one recurring task
                 user_rec["taskKey"] = task_key
             f.write(json.dumps(user_rec, ensure_ascii=False) + "\n")
-            ts += 1000
+            # space the reply >=5s after the prompt so a single-turn session
+            # isn't misclassified as a <3s headless replay and dropped by the
+            # engine's harvest filter (skillopt_sleep Issue #62).
+            ts += 5000
             f.write(json.dumps({
                 "type": "assistant",
                 "message": {"role": "assistant", "content": asst_text},
