@@ -122,6 +122,26 @@ python3 -m build && python3 -m twine upload dist/*
 > `uvx` env without being on PyPI. Point `MEMENTO_ENGINE_REPO` at a clone (or run
 > `install.sh` once to create one).
 
+### Enabling it for your whole organization (admins)
+
+memento is open-source and on PyPI, so **anyone can add it to their own Devin
+org — no approval from Cognition or this project is required.** It is *not* in
+the global Devin Marketplace (that is curated/partner-only), so each org enables
+it itself.
+
+In Devin, adding a custom MCP server requires the **"Manage MCP Servers"**
+permission (org admins). Once an admin adds it, it is available **org-wide** to
+everyone in that organization:
+
+1. **Settings → Connections → MCP servers → "Add a custom MCP"**
+2. Name `memento`, transport **STDIO**
+3. **Command** `uvx`, **Args** `["devin-memento"]`,
+   **Env** `MEMENTO_ENGINE_REPO` + `MEMENTO_HOME`
+4. **Save → "Test listing tools"** (should list the `memento_*` / `memory_*` tools)
+
+Not an admin? Ask whoever holds **Manage MCP Servers** to add it (or to grant you
+that permission).
+
 ---
 
 ## Use
