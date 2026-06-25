@@ -539,6 +539,18 @@ class TestMemoryAdvanced(unittest.TestCase):
         self.assertEqual(len([m for m in self.store.lessons()
                               if "WidgetCache" in m["content"]]), 1)
 
+    def test_manual_lesson_is_pinned_and_survives_relearn(self):
+        mid = self.store.add_lesson("Always rebase", "we squash-merge; rebase first")
+        self.assertTrue(self.store.get(mid)["pinned"])
+        self.assertEqual(self.store.get(mid)["tier"], "semantic")
+        # seed a recurring pattern, then re-derive lessons
+        self.store.save("a", "touch WidgetCache")
+        self.store.save("b", "again WidgetCache")
+        self.store.learn()
+        titles = [m["title"] for m in self.store.lessons()]
+        self.assertIn("Always rebase", titles)   # manual one kept
+        self.assertTrue(any("WidgetCache" in m["content"] for m in self.store.lessons()))
+
     def test_learn_summarizes_failures(self):
         self.store.capture("PostToolUseFailure", "build error: NPE in checkout")
         self.store.capture("PostToolUseFailure", "test failure in payment flow")

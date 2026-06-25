@@ -508,7 +508,14 @@ class MemoryStore:
         with self._connect() as c:
             return [self._row(r) for r in c.execute(
                 "SELECT * FROM memories WHERE source='lesson' "
-                "ORDER BY created_ts DESC LIMIT ?", (int(limit),))]
+                "ORDER BY pinned DESC, created_ts DESC LIMIT ?", (int(limit),))]
+
+    def add_lesson(self, title, content) -> str:
+        """Manually author a lesson. Pinned, so memory_learn never wipes it."""
+        mid = self.save(title, content, tier="semantic", tags="lesson",
+                        source="lesson")
+        self.pin(mid, True)
+        return mid
 
     def sessions(self) -> list:
         with self._connect() as c:
@@ -714,13 +721,20 @@ async function mpin(id,p){await post('/api/pin',{id,pinned:!!p});loadMem();}
 
 async function lessons(){
  const d=await api('/api/lessons');
- $('#main').innerHTML=`<h2>Lessons</h2><p class=sub>insights derived from recurring patterns</p>
+ $('#main').innerHTML=`<h2>Lessons</h2><p class=sub>insights derived from recurring patterns — or pin your own</p>
  <div class=card><button class=btn onclick=doLearn()>✨ Learn now</button>
   <span class=sub style=margin-left:10px>mines recurring entities, tags & failures into the semantic tier</span></div>
- <div id=ll>${d.lessons.map(m=>`<div class=card>${badge('lesson')} <h3 style=display:inline>${esc(m.title)}</h3>
-   <div style=margin-top:6px>${esc(m.content)}</div></div>`).join('')||'<p class=sub>No lessons yet — click Learn now.</p>'}</div>`;
+ <details class=card><summary style=cursor:pointer>+ Add a lesson (manual, pinned)</summary>
+  <div class=row><input id=lt placeholder="Lesson title"></div>
+  <textarea id=lc rows=2 placeholder="What did we learn?"></textarea>
+  <div class=row><button class=btn onclick=doAddLesson()>Save lesson</button></div>
+  <span class=sub>Manual lessons are pinned 📌, so "Learn now" never overwrites them.</span></details>
+ <div id=ll>${d.lessons.map(m=>`<div class=card>${badge('lesson')} ${m.pinned?'📌 ':''}<h3 style=display:inline>${esc(m.title)}</h3>
+   <div style=margin-top:6px>${esc(m.content)}</div></div>`).join('')||'<p class=sub>No lessons yet — click Learn now or add one.</p>'}</div>`;
 }
 async function doLearn(){const r=await post('/api/learn',{});toast('derived '+(r.created||[]).length+' lesson(s)');lessons();}
+async function doAddLesson(){const r=await post('/api/lesson',{title:$('#lt').value,content:$('#lc').value});
+ if(r.error){toast(r.error);return;}toast('lesson pinned');lessons();}
 
 async function sessions(){
  const d=await api('/api/sessions');
@@ -844,6 +858,12 @@ def _make_handler(store):
                 created = store.learn(min_support=body.get("min_support", 2))
                 return self._send(200, json.dumps(
                     {"created": [{"id": i, "label": lbl} for i, lbl in created]}))
+            if path == "/api/lesson":
+                try:
+                    mid = store.add_lesson(body.get("title"), body.get("content"))
+                    return self._send(200, json.dumps({"id": mid}))
+                except ValueError as e:
+                    return self._send(400, json.dumps({"error": str(e)}))
             if path == "/api/consolidate":
                 return self._send(200, json.dumps(store.consolidate()))
             return self._send(404, json.dumps({"error": "not found"}))
