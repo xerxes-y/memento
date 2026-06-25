@@ -16,18 +16,27 @@ when it **strictly beats a held-out validation gate** (built on Microsoft's
 SkillOpt). It also ships a built-in memory engine — hybrid BM25 + vector search,
 memory tiers, a knowledge graph, auto-derived "lessons," and a local dashboard.
 
+The piece I think is most interesting for Devin teams: **shared team memory**.
+It runs in two modes — **solo** (local SQLite, zero config) or **team** (one
+shared **Postgres + pgvector**, scoped per team by namespace), switched with a
+single env var. In team mode everyone's Devin reads and writes the same memory
+and lessons, with a team selector in the dashboard — so hard-won context and
+conventions become a **shared, persistent team asset** instead of living in one
+person's session history.
+
 It's live and easy to try:
 - Repo: https://github.com/xerxes-y/memento
 - PyPI: `uvx devin-memento` — https://pypi.org/project/devin-memento/
-- One-click bundle: `.mcpb` on the v0.5.0 release
+- One-click bundle: `.mcpb` on the GitHub release
 - Today it installs via *Settings → Connections → MCP servers → Add a custom MCP*
   (Command `uvx`, Args `["devin-memento"]`).
 
 I'd love to explore a **Marketplace listing** so Devin teams can find it. One
-honest note: it's a **local / STDIO** server (it reads local Devin transcripts
-and runs a local optimizer), which differs from the hosted/OAuth servers in the
-gallery today. Happy to discuss whether that fits the curated list as-is, or to
-build a hosted variant if that's the bar.
+honest note: it's a **local / STDIO** server today (it reads local Devin
+transcripts and runs a local optimizer), which differs from the hosted/OAuth
+servers in the gallery. The team mode (shared Postgres backend) is already a step
+toward a hosted model, so I'm happy to discuss whether the local form fits the
+curated list as-is, or to build a fully hosted variant if that's the bar.
 
 Could we find 15 minutes? I can walk through a live demo.
 
