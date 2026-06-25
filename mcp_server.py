@@ -33,6 +33,8 @@ Tools exposed (identical interface to the Copilot plugin):
   memory_consolidate  promote reinforced / forget stale memories
   memory_pin        protect a memory from decay/consolidation
   memory_namespaces list scopes; memory_snapshot/restore/audit  governance
+  memory_learn      derive lessons from recurring patterns (semantic tier)
+  memory_lessons    list derived lessons
 
 Run just the memory dashboard with::
 
@@ -292,6 +294,28 @@ TOOLS = [
         "name": "memory_audit",
         "action": "memory_audit",
         "description": "Governance: recent audit-log entries (saves, forgets, consolidations).",
+        "schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_learn",
+        "action": "memory_learn",
+        "description": ("Lessons: derive insights from recurring patterns (entities, "
+                        "tags, failures) into the semantic tier. Re-run anytime."),
+        "schema": {
+            "type": "object",
+            "properties": {"min_support": {"type": "integer",
+                           "description": "Min occurrences for a pattern (default 2)."}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_lessons",
+        "action": "memory_lessons",
+        "description": "Lessons: list derived lessons (semantic insights from patterns).",
         "schema": {
             "type": "object",
             "properties": {"limit": {"type": "integer"}},
@@ -600,6 +624,22 @@ def _memory_audit(args: dict) -> str:
         f"- {r['op']} {r['mem_id']} {r['detail']}".rstrip() for r in rows)
 
 
+def _memory_learn(args: dict) -> str:
+    created = _store().learn(min_support=args.get("min_support") or 2)
+    if not created:
+        return "[memory] no recurring patterns yet — nothing to learn."
+    return f"[memory] derived {len(created)} lesson(s):\n" + "\n".join(
+        f"- {label}" for _, label in created)
+
+
+def _memory_lessons(args: dict) -> str:
+    rows = _store().lessons(limit=args.get("limit") or 20)
+    if not rows:
+        return "[memory] no lessons yet — run memory_learn."
+    return "[memory] lessons:\n" + "\n".join(
+        f"- {m['title']}: {str(m['content']).strip()[:160]}" for m in rows)
+
+
 _MEMORY_ACTIONS = {
     "memory_save": _memory_save,
     "memory_recall": _memory_recall,
@@ -617,6 +657,8 @@ _MEMORY_ACTIONS = {
     "memory_snapshot": _memory_snapshot,
     "memory_restore": _memory_restore,
     "memory_audit": _memory_audit,
+    "memory_learn": _memory_learn,
+    "memory_lessons": _memory_lessons,
 }
 
 # ── JSON-RPC / MCP plumbing ───────────────────────────────────────────────────

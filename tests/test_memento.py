@@ -213,7 +213,8 @@ class TestMcpProtocol(unittest.TestCase):
                                  "memory_dashboard", "memory_related", "memory_graph",
                                  "memory_capture", "memory_consolidate", "memory_pin",
                                  "memory_namespaces", "memory_snapshot",
-                                 "memory_restore", "memory_audit"})
+                                 "memory_restore", "memory_audit",
+                                 "memory_learn", "memory_lessons"})
         for t in tools:
             self.assertIn("inputSchema", t)
         # memory_save advertises its own schema, not the shared engine schema
@@ -502,6 +503,43 @@ class TestMemoryAdvanced(unittest.TestCase):
         self.store.save("x", "audited save")
         ops = {r["op"] for r in self.store.audit_log()}
         self.assertIn("save", ops)
+
+    # Lessons
+    def test_learn_derives_lesson_from_recurring_entity(self):
+        self.store.save("Fix", "patch OrderService.persist() bug")
+        self.store.save("Test", "cover OrderService.persist() edge cases")
+        created = self.store.learn(min_support=2)
+        self.assertTrue(created)
+        lessons = self.store.lessons()
+        self.assertTrue(lessons)
+        self.assertEqual(lessons[0]["tier"], "semantic")
+        self.assertEqual(lessons[0]["tags"], "lesson")
+        self.assertTrue(any("OrderService" in m["content"] for m in lessons))
+
+    def test_learn_is_idempotent(self):
+        self.store.save("a", "shared WidgetCache here")
+        self.store.save("b", "also a WidgetCache there")
+        n1 = len(self.store.learn())
+        n2 = len(self.store.learn())
+        self.assertEqual(n1, n2)
+        # re-learning regenerates rather than accumulating
+        self.assertEqual(len([m for m in self.store.lessons()
+                              if "WidgetCache" in m["content"]]), 1)
+
+    def test_learn_summarizes_failures(self):
+        self.store.capture("PostToolUseFailure", "build error: NPE in checkout")
+        self.store.capture("PostToolUseFailure", "test failure in payment flow")
+        self.store.learn()
+        self.assertTrue(any("failure" in m["title"].lower()
+                            for m in self.store.lessons()))
+
+    def test_lessons_excluded_from_pattern_mining(self):
+        self.store.save("Fix", "patch OrderService.persist()")
+        self.store.save("Test", "test OrderService.persist()")
+        self.store.learn()
+        # lessons must not feed back into the entity counts on a second pass
+        ents = dict(self.store.patterns(min_support=2)["entities"])
+        self.assertNotIn("lesson", [e.lower() for e in ents])
 
 
 class TestMemoryTools(unittest.TestCase):

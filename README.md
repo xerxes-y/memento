@@ -169,6 +169,7 @@ Or call tools directly:
 | `memory_related` | knowledge-graph neighbours of a memory (shared entities) |
 | `memory_graph` | knowledge-graph overview (top entities) |
 | `memory_capture` | record a lifecycle event (e.g. `PreToolUse`) as a working memory |
+| `memory_learn` / `memory_lessons` | derive **lessons** from recurring patterns; list them |
 | `memory_consolidate` | promote reinforced memories; auto-forget stale ones |
 | `memory_pin` | protect a memory from decay/consolidation |
 | `memory_namespaces` | list scopes with counts |
@@ -229,6 +230,10 @@ memento ships its **own** agentmemory-class memory engine
   **auto-consolidation** (reinforced memories promote up a tier) and **decay /
   auto-forget** of stale, never-used working memories. `memory_pin` protects a
   memory.
+- **Lessons** — `memory_learn` mines recurring patterns (entities, tags,
+  repeated failures) and derives **lessons** into the semantic tier;
+  `memory_lessons` lists them. Re-running regenerates them (pinned lessons are
+  kept). Heuristic by default; swap in an LLM for richer synthesis.
 - **Knowledge graph** — entity extraction + `memory_related` (neighbours that
   share an entity) and `memory_graph` (overview), with a graph tab in the
   dashboard.
@@ -249,9 +254,9 @@ python3 mcp_server.py --web --port 3114    # → http://127.0.0.1:3114
 
 > **Scope note.** Embeddings are deterministic term-frequency vectors (real
 > vector-space cosine, no model/API needed) — for synonym-level semantics, swap
-> in a neural embedder via the `Embedder` class. Entity extraction is heuristic.
-> This is agentmemory-*class* core coverage (~16 memory tools), not a
-> byte-for-byte clone of its 53-tool surface.
+> in a neural embedder via the `Embedder` class. Entity extraction and lesson
+> derivation are heuristic (LLM-swappable). This is agentmemory-*class* core
+> coverage (~18 memory tools), not a byte-for-byte clone of its 53-tool surface.
 
 ---
 

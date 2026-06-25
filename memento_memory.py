@@ -436,6 +436,73 @@ class MemoryStore:
         self._export()
         return {"promoted": promoted, "forgotten": forgotten}
 
+    # ── lessons: pattern detection → derived insights (semantic tier) ─────────
+
+    def patterns(self, min_support=2, namespace=None) -> dict:
+        """Detect recurring signals across non-lesson memories."""
+        ns = " AND m.namespace=?" if namespace else ""
+        nsp = [namespace] if namespace else []
+        with self._connect() as c:
+            ents = [(r["entity"], r["n"]) for r in c.execute(
+                "SELECT e.entity, COUNT(*) AS n FROM mem_entities e "
+                "JOIN memories m ON m.id=e.mem_id "
+                "WHERE m.source<>'lesson'" + ns +
+                " GROUP BY e.entity HAVING n>=? ORDER BY n DESC",
+                nsp + [min_support])]
+            tagc = {}
+            for r in c.execute(
+                    "SELECT tags FROM memories m WHERE source<>'lesson'" + ns, nsp):
+                for t in (r["tags"] or "").split(","):
+                    t = t.strip()
+                    if t:
+                        tagc[t] = tagc.get(t, 0) + 1
+            tags = [(t, n) for t, n in sorted(tagc.items(), key=lambda x: -x[1])
+                    if n >= min_support]
+            fails = [self._row(r) for r in c.execute(
+                "SELECT * FROM memories WHERE source='hook' AND "
+                "(title LIKE '%Failure%' OR content LIKE '%fail%' "
+                "OR content LIKE '%error%')")]
+        return {"entities": ents, "tags": tags, "failures": fails}
+
+    def learn(self, min_support=2, namespace=DEFAULT_NAMESPACE) -> list:
+        """Derive lessons from patterns into the semantic tier.
+
+        Heuristic + stdlib: summarizes recurring entities, tags, and failures.
+        Regenerates auto-lessons each run (pinned lessons are kept). Swap in an
+        LLM to synthesize richer lessons without changing the rest of the engine.
+        """
+        p = self.patterns(min_support, None if namespace == DEFAULT_NAMESPACE else namespace)
+        with self._connect() as c:  # clear prior unpinned auto-lessons
+            for i in [r["id"] for r in c.execute(
+                    "SELECT id FROM memories WHERE source='lesson' AND pinned=0")]:
+                c.execute("DELETE FROM memories WHERE id=?", (i,))
+                c.execute("DELETE FROM mem_entities WHERE mem_id=?", (i,))
+                if self.fts:
+                    c.execute("DELETE FROM memories_fts WHERE id=?", (i,))
+        created = []
+        for ent, n in p["entities"][:10]:
+            mid = self.save(
+                f"Lesson: recurring focus on {ent}",
+                f"'{ent}' recurs across {n} memories — a stable topic; consider a "
+                f"dedicated SKILL.md section or guardrail for it.",
+                tier="semantic", tags="lesson", source="lesson", namespace=namespace)
+            created.append((mid, ent))
+        if p["failures"]:
+            eg = ", ".join(sorted({f["title"] for f in p["failures"]})[:5])
+            mid = self.save(
+                "Lesson: recurring failures",
+                f"{len(p['failures'])} failure events captured (e.g. {eg}). "
+                f"Find the root cause and encode a check so it does not recur.",
+                tier="semantic", tags="lesson", source="lesson", namespace=namespace)
+            created.append((mid, "failures"))
+        return created
+
+    def lessons(self, limit=20) -> list:
+        with self._connect() as c:
+            return [self._row(r) for r in c.execute(
+                "SELECT * FROM memories WHERE source='lesson' "
+                "ORDER BY created_ts DESC LIMIT ?", (int(limit),))]
+
     # ── governance: namespaces + snapshots (Phase 5) ──────────────────────────
 
     def namespaces(self) -> list:
