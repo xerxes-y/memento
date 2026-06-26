@@ -1,7 +1,23 @@
 # Memento (Devin IDE)
 
-You have access to a nightly self-evolution cycle via the `memento` MCP
-server.  Use these tools to improve your long-term skills over time:
+## Recall before you act (do this first)
+
+The team's shared memory holds what past sessions learned. **Before starting any
+task** — implementing a ticket, editing code, writing a test, running a query —
+call **`memory_brief`** with a short description of what you're about to do. It
+returns, in one shot, the relevant prior memories **and** the standing lessons.
+
+- Treat the briefing as **constraints**, not suggestions. Follow it.
+- If a lesson conflicts with the request, **prefer the lesson** and tell the user why.
+- When you finish and learned something reusable (a fix, a convention, a gotcha),
+  **`memory_save`** it so the next session benefits.
+
+This is cheap and the default first step. Don't skip it.
+
+---
+
+You also have a nightly self-evolution cycle via the `memento` MCP server. Use
+these tools to improve your long-term skills over time:
 
 - **`memento_auto`** — run a full cycle **and** auto-adopt the staged proposal,
   then show the user the SKILL.md diff. This is the default for hands-off

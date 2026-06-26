@@ -9,6 +9,13 @@ This skill is automatically updated by Memento. The content below is the
 initial seed and will be replaced with validation-gated improvements after the
 first sleep cycle runs.
 
+## Recall before you act
+
+Before starting any task, call **`memory_brief`** with what you're about to do —
+it returns the relevant prior memories and standing lessons in one step. Follow
+them; when you learn something reusable, **`memory_save`** it. The patterns below
+are the durable, validation-gated subset of that memory.
+
 ## Current Patterns
 
 ### Java / Spring Boot

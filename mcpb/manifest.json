@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "devin-memento",
   "display_name": "memento",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "A nightly sleep cycle for Devin: self-improving SKILL.md + built-in memory (BM25+vector search, tiers, knowledge graph, lessons, dashboard).",
   "long_description": "memento gives Devin a nightly self-evolution cycle (harvest -> mine -> replay -> validation gate -> adopt) plus a stdlib-only memory engine with hybrid search, a knowledge graph, auto-derived and manual lessons, and a local web dashboard. The sleep-cycle tools require a local clone of microsoft/SkillOpt at MEMENTO_ENGINE_REPO; the memory tools work without it.",
   "author": {
@@ -122,6 +122,10 @@
     {
       "name": "memory_lessons",
       "description": "Lessons: list derived lessons (semantic insights from patterns)."
+    },
+    {
+      "name": "memory_brief",
+      "description": "Recall-before-act: relevant prior memories + standing lessons for a task, in one call."
     }
   ],
   "user_config": {

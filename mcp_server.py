@@ -35,6 +35,7 @@ Tools exposed (identical interface to the Copilot plugin):
   memory_namespaces list scopes; memory_snapshot/restore/audit  governance
   memory_learn      derive lessons from recurring patterns (semantic tier)
   memory_lessons    list derived lessons
+  memory_brief      recall-before-act: relevant memories + lessons for a task
 
 Run just the memory dashboard with::
 
@@ -317,6 +318,28 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {"limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_brief",
+        "action": "memory_brief",
+        "description": (
+            "RECALL BEFORE YOU ACT. Call this first when starting any task — pass "
+            "the task/goal and get back, in one shot, the relevant prior memories "
+            "AND the standing lessons that apply. Treat the result as constraints: "
+            "follow it before proceeding; if a lesson conflicts with the request, "
+            "prefer the lesson and tell the user why."
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string",
+                         "description": "What you are about to do (the task, goal, or query)."},
+                "limit": {"type": "integer", "description": "Max relevant memories (default 5)."},
+                "namespace": {"type": "string", "description": "Team scope (optional)."},
+            },
+            "required": ["task"],
             "additionalProperties": False,
         },
     },
@@ -680,6 +703,38 @@ def _memory_lessons(args: dict) -> str:
         f"- {m['title']}: {str(m['content']).strip()[:160]}" for m in rows)
 
 
+def _memory_brief(args: dict) -> str:
+    """Pre-flight recall: relevant prior memories + standing lessons for a task,
+    in one response — so the agent can consult memory before acting."""
+    import memento_auth
+    task = (args.get("task") or "").strip()
+    if not task:
+        return "[memory] memory_brief needs a 'task' to brief against."
+    try:
+        ns = _ns(args)
+    except memento_auth.AuthError as exc:
+        return f"[memory] {exc}"
+    store = _store()
+    hits = store.search(task, limit=args.get("limit") or 5, namespace=ns)
+    lessons = store.lessons(limit=6, namespace=ns)
+    if not hits and not lessons:
+        return (f"[memory] pre-flight briefing for: {task}\n"
+                "No relevant memories or lessons yet — proceed, and save what you learn.")
+    out = [f"[memory] pre-flight briefing for: {task}", ""]
+    if hits:
+        out.append(f"Relevant memories ({len(hits)}):")
+        out += [f"- ({m['tier']}) {m['title']}: {str(m['content']).strip()[:180]}"
+                + (f"  #{m['tags']}" if m.get("tags") else "") for m in hits]
+        out.append("")
+    if lessons:
+        out.append(f"Lessons to apply ({len(lessons)}):")
+        out += [f"- {m['title']}: {str(m['content']).strip()[:180]}" for m in lessons]
+        out.append("")
+    out.append("→ Treat these as constraints. If a lesson conflicts with the "
+               "request, prefer the lesson and tell the user why.")
+    return "\n".join(out)
+
+
 _MEMORY_ACTIONS = {
     "memory_save": _memory_save,
     "memory_recall": _memory_recall,
@@ -699,6 +754,7 @@ _MEMORY_ACTIONS = {
     "memory_audit": _memory_audit,
     "memory_learn": _memory_learn,
     "memory_lessons": _memory_lessons,
+    "memory_brief": _memory_brief,
 }
 
 # ── JSON-RPC / MCP plumbing ───────────────────────────────────────────────────

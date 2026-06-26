@@ -182,6 +182,7 @@ Or call tools directly:
 | `memento_run` | full cycle; stages a proposal for your review |
 | `memento_adopt` | apply the staged proposal; syncs skill to workspace |
 | `memento_harvest` | debug: list the recurring tasks mined |
+| `memory_brief` | **recall-before-act**: relevant memories **+** standing lessons for a task, in one call |
 | `memory_save` | persist a memory (`title`, `content`, `tier`, `tags`, `namespace`) |
 | `memory_recall` | hybrid search — BM25 + semantic vector, RRF-fused (`mode`, `tier`) |
 | `memory_list` | list recent memories (optional `tier` / `session`) |

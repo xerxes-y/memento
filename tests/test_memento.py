@@ -214,7 +214,7 @@ class TestMcpProtocol(unittest.TestCase):
                                  "memory_capture", "memory_consolidate", "memory_pin",
                                  "memory_namespaces", "memory_snapshot",
                                  "memory_restore", "memory_audit",
-                                 "memory_learn", "memory_lessons"})
+                                 "memory_learn", "memory_lessons", "memory_brief"})
         for t in tools:
             self.assertIn("inputSchema", t)
         # memory_save advertises its own schema, not the shared engine schema
@@ -616,6 +616,19 @@ class TestMemoryTools(unittest.TestCase):
     def test_stats_handler(self):
         mcp_server._memory_save({"title": "a", "content": "alpha"})
         self.assertIn("1 total", mcp_server._memory_stats({}))
+
+    def test_brief_returns_relevant_memories_and_lessons(self):
+        mcp_server._memory_save({"title": "Use Flyway", "content": "add a new V__ migration script",
+                                 "tier": "procedural", "tags": "db"})
+        mcp_server._store().add_lesson("Gate risky releases", "ship behind a flag")
+        out = mcp_server._memory_brief({"task": "add a database migration"})
+        self.assertIn("pre-flight briefing", out)
+        self.assertIn("Use Flyway", out)              # relevant memory surfaced
+        self.assertIn("Gate risky releases", out)     # standing lesson surfaced
+        self.assertIn("constraints", out)             # behavioral instruction
+
+    def test_brief_requires_task(self):
+        self.assertIn("needs a 'task'", mcp_server._memory_brief({}))
 
 
 class TestTeamAuthGate(unittest.TestCase):
