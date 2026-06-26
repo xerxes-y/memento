@@ -1090,9 +1090,13 @@ async function vGraph(){
  const g=await api(nsq('/api/graph'));const cv=$('#gcanvas'),ctx=cv.getContext('2d');
  const dpr=devicePixelRatio||1;function size(){cv.width=cv.clientWidth*dpr;cv.height=cv.clientHeight*dpr;}size();
  const cs=getComputedStyle(document.body),AC=cs.getPropertyValue('--accent'),TXc=cs.getPropertyValue('--text'),MU=cs.getPropertyValue('--muted');
- const nodes=(g.nodes||[]).map(n=>({...n,x:Math.random()*cv.width,y:Math.random()*cv.height,vx:0,vy:0,
-   r:n.type==='e'?5:8}));
- const idx={};nodes.forEach((n,i)=>idx[n.id]=i);const edges=(g.edges||[]).filter(e=>idx[e.s]!=null&&idx[e.t]!=null);
+ const ents=(g.entities||[]).map(e=>({id:'ent:'+e.name,label:e.name,type:'e',count:e.count}));
+ const mns=(g.memories||[]).map(m=>({id:m.id,label:m.title,type:'m'}));
+ const nodes=ents.concat(mns).map(n=>({...n,x:Math.random()*cv.width,y:Math.random()*cv.height,vx:0,vy:0,
+   r:n.type==='e'?Math.min(12,5+(n.count||1)):7}));
+ const idx={};nodes.forEach((n,i)=>idx[n.id]=i);
+ const edges=(g.edges||[]).map(e=>({s:e.mem,t:'ent:'+e.entity})).filter(e=>idx[e.s]!=null&&idx[e.t]!=null);
+ if(!nodes.length){$('#gcanvas').outerHTML='<div class=empty><div class=big>❖</div>No linked entities yet — add a few memories that share names.</div>';return;}
  let drag=null,tip=$('#gtip');
  function pos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*dpr,y:(e.clientY-r.top)*dpr};}
  function near(m){let b=null,bd=1e9;nodes.forEach(n=>{const d=(n.x-m.x)**2+(n.y-m.y)**2;if(d<bd&&d<(n.r*dpr+8*dpr)**2){bd=d;b=n;}});return b;}
@@ -1130,8 +1134,10 @@ document.onkeydown=e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&
  if(e.key==='Escape')closeModal();};
 
 (function init(){
- const th=localStorage.getItem('memento.theme')||'light';
+ const qp=new URLSearchParams(location.search);
+ const th=qp.get('theme')||localStorage.getItem('memento.theme')||'light';
  document.documentElement.setAttribute('data-theme',th);$('#theme').textContent=th==='dark'?'☀':'☾';
+ const qr=qp.get('role');if(qr&&ROLES[qr]){ST.role=qr;localStorage.setItem('memento.role',qr);}
  if(!ROLES[ST.role])ST.role='developer';
  const h=location.hash.slice(1);applyRole();loadNS().then(()=>{setFoot();go(NAVMETA[h]?h:R().nav[0]);});
 })();

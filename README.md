@@ -298,6 +298,16 @@ Plus global search (`/` to focus, hybrid · keyword · semantic), inline **creat
 and edit**, a force-directed **knowledge graph**, **lessons**, sessions, an
 **activity/audit** log, and a light/dark theme. Role is remembered per browser;
 edits and deletes are gated by role and (in team mode) by the Keycloak gate.
+Deep-link a view with `?role=tester#memories` or `?theme=dark`.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/overview.png" width="49%" alt="Product Owner lens — value KPIs and lessons learned">
+  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/memories.png" width="49%" alt="Tester lens — search, verify provenance, correct memories">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/graph.png" width="49%" alt="Developer lens — knowledge graph">
+  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/lessons.png" width="49%" alt="Lessons distilled from recurring patterns">
+</p>
 
 > **Scope note.** Embeddings are deterministic term-frequency vectors (real
 > vector-space cosine, no model/API needed) — for synonym-level semantics, swap
