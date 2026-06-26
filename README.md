@@ -299,15 +299,6 @@ and edit**, a force-directed **knowledge graph**, **lessons**, sessions, an
 **activity/audit** log, and a light/dark theme. Role is remembered per browser;
 edits and deletes are gated by role and (in team mode) by the Keycloak gate.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/overview.png" width="49%" alt="memento dashboard — overview">
-  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/graph.png" width="49%" alt="memento dashboard — knowledge graph">
-</p>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/memories.png" width="49%" alt="memento dashboard — memories">
-  <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/lessons.png" width="49%" alt="memento dashboard — lessons">
-</p>
-
 > **Scope note.** Embeddings are deterministic term-frequency vectors (real
 > vector-space cosine, no model/API needed) — for synonym-level semantics, swap
 > in a neural embedder via the `Embedder` class. Entity extraction and lesson
