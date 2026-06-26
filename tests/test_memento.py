@@ -437,6 +437,30 @@ class TestMemoryAdvanced(unittest.TestCase):
             db_path=os.path.join(self._dir, "memory.db"),
             export_path=os.path.join(self._dir, "standalone.json"))
 
+    def test_update_edits_in_place_and_reindexes(self):
+        mid = self.store.save("Build", "uses maven mvn test", tier="working",
+                              tags="build")
+        ok = self.store.update(mid, content="now uses gradle gradlew check",
+                               tier="procedural", tags="build,gradle", actor="qa")
+        self.assertTrue(ok)
+        m = self.store.get(mid)
+        self.assertEqual(m["id"], mid)                 # id stays stable
+        self.assertEqual(m["tier"], "procedural")
+        self.assertIn("gradle", m["content"])
+        # FTS reindexed: searchable by the new term, not the old one
+        self.assertTrue(self.store.search("gradlew"))
+        self.assertEqual(self.store.search("maven"), [])
+        # audit recorded the edit
+        self.assertEqual(self.store.audit_log(limit=1)[0]["op"], "edit")
+
+    def test_update_missing_id_returns_false(self):
+        self.assertFalse(self.store.update("mem-nope", content="x"))
+
+    def test_update_rejects_emptying_required_field(self):
+        mid = self.store.save("T", "body")
+        with self.assertRaises(ValueError):
+            self.store.update(mid, content="   ")
+
     # Phase 2
     def test_vector_search_finds_lexically_similar(self):
         self.store.save("Build", "run the test suite with rtk")

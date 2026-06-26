@@ -251,6 +251,42 @@ class MemoryStore:
             self._audit(c, "pin" if pinned else "unpin", mem_id)
             return cur.rowcount > 0
 
+    def update(self, mem_id, title=None, content=None, tier=None, tags=None,
+               namespace=None, actor="") -> bool:
+        """Edit an existing memory in place (id is kept stable even though it was
+        originally derived from title+content). Only provided fields change.
+        Refreshes the FTS index and extracted entities. Returns False if the id
+        does not exist, or (with namespace set) belongs to another team."""
+        with self._connect() as c:
+            sql = "SELECT * FROM memories WHERE id=?"
+            params = [mem_id]
+            if namespace:  # team gate: can't edit another team's memory
+                sql += " AND namespace=?"; params.append(namespace)
+            row = c.execute(sql, params).fetchone()
+            if not row:
+                return False
+            cur = self._row(row)
+            new_title = redact_secrets(title.strip()) if title is not None else cur["title"]
+            new_content = redact_secrets(content.strip()) if content is not None else cur["content"]
+            if not new_title or not new_content:
+                raise ValueError("both 'title' and 'content' are required")
+            new_tier = tier if tier in TIERS else cur["tier"]
+            new_tags = self._norm_tags(tags) if tags is not None else cur["tags"]
+            c.execute("UPDATE memories SET title=?, content=?, tier=?, tags=?, "
+                      "accessed_ts=? WHERE id=?",
+                      (new_title, new_content, new_tier, new_tags, time.time(), mem_id))
+            if self.fts:
+                c.execute("DELETE FROM memories_fts WHERE id=?", (mem_id,))
+                c.execute("INSERT INTO memories_fts(id,title,content,tags) "
+                          "VALUES(?,?,?,?)", (mem_id, new_title, new_content, new_tags))
+            c.execute("DELETE FROM mem_entities WHERE mem_id=?", (mem_id,))
+            for ent in extract_entities(new_title + " " + new_content):
+                c.execute("INSERT OR IGNORE INTO mem_entities(mem_id,entity) "
+                          "VALUES(?,?)", (mem_id, ent))
+            self._audit(c, "edit", mem_id, actor, new_tier)
+        self._export()
+        return True
+
     def forget(self, mem_id=None, query=None, namespace=None) -> int:
         with self._connect() as c:
             if mem_id:
@@ -620,202 +656,485 @@ def open_store(export_path=None, db_path=None):
 
 # ── local web dashboard (stdlib http.server, vanilla JS) ──────────────────────
 
-_PAGE = """<!doctype html><html lang=en><head><meta charset=utf-8>
+_PAGE = r"""<!doctype html><html lang=en data-theme=light><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>memento · memory</title><style>
-:root{color-scheme:dark}*{box-sizing:border-box}
-body{margin:0;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#e9d5ff;
- background:linear-gradient(160deg,#0b1022,#1a1240 55%,#3b1a78);min-height:100vh;display:flex}
-aside{width:210px;flex:none;padding:18px 14px;border-right:1px solid #ffffff14;
- background:#0b1022aa;backdrop-filter:blur(6px);position:sticky;top:0;height:100vh}
-aside h1{font-size:17px;margin:0 0 18px;color:#f8fafc;letter-spacing:1px}
-nav button{display:block;width:100%;text-align:left;margin:4px 0;padding:9px 12px;border:0;border-radius:10px;
- background:transparent;color:#c4b5fd;cursor:pointer;font:inherit}
-nav button.on{background:#7c3aed33;color:#f8fafc;box-shadow:inset 0 0 0 1px #7c3aed66}
-nav button:hover{background:#ffffff10}
-aside .foot{position:absolute;bottom:16px;font-size:11px;color:#8b7fb8;width:182px;word-break:break-all}
-main{flex:1;padding:22px 28px;max-width:980px}
-h2{margin:0 0 4px;color:#f8fafc;font-size:22px;letter-spacing:.5px}
-.sub{color:#a895d8;margin:0 0 18px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
-.stat{background:#ffffff0e;border:1px solid #ffffff1f;border-radius:14px;padding:14px 16px}
-.stat .n{font-size:26px;font-weight:700;color:#f8fafc}.stat .l{font-size:12px;color:#a895d8}
-.card{background:#ffffff0e;border:1px solid #ffffff1f;border-radius:14px;padding:14px 16px;margin:12px 0}
-.card h3{margin:0 0 4px;color:#f8fafc;font-size:15px}
-.bar{height:10px;border-radius:6px;background:#ffffff14;overflow:hidden;margin:6px 0}
-.bar>span{display:block;height:100%}
-input,textarea,select,button{font:inherit;border-radius:10px;border:1px solid #ffffff2b;background:#ffffff10;color:#f8fafc;padding:9px 12px}
-input,textarea{width:100%}.row{display:flex;gap:10px;margin:8px 0}.row>*{flex:1}
-.btn{cursor:pointer;background:#7c3aed;border-color:#7c3aed;font-weight:600}
-.btn.ghost{background:#ffffff12;border-color:#ffffff2b}
-.meta{font-size:12px;color:#c4b5fd99;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.badge{font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-radius:99px;padding:2px 9px;font-weight:600}
-.act{color:#fca5a5;cursor:pointer;font-size:12px}.act.pin{color:#fcd34d}
-.chip{display:inline-block;background:#ffffff14;border:1px solid #ffffff22;border-radius:99px;padding:3px 11px;margin:3px;cursor:pointer;font-size:13px}
-#cv{width:100%;height:62vh;background:#0b102255;border:1px solid #ffffff1f;border-radius:14px;display:block}
-#gtip{position:fixed;pointer-events:none;background:#0b1022ee;border:1px solid #7c3aed;border-radius:8px;padding:4px 8px;font-size:12px;display:none;max-width:280px}
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#7c3aed;color:#fff;
- padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none}
-.feed{font-size:13px}.feed div{padding:6px 0;border-bottom:1px solid #ffffff12;display:flex;gap:10px}
-.feed .op{color:#67e8f9;min-width:150px}
+<title>memento · team memory</title><style>
+*{box-sizing:border-box}
+:root{
+ --bg:#f4f5fb; --panel:#ffffff; --panel2:#f8f9fd; --border:#e6e8f0;
+ --text:#1c2030; --muted:#6b7185; --faint:#9aa0b4;
+ --accent:#5b5bf0; --accent-weak:#5b5bf015; --accent-line:#5b5bf040;
+ --good:#1aa06d; --warn:#c98a00; --bad:#d6455d; --shadow:0 1px 2px #1c20300d,0 2px 8px #1c203008;
+ --working:#6b7185; --episodic:#5b5bf0; --semantic:#1aa06d; --procedural:#c98a00;
+}
+[data-theme=dark]{
+ --bg:#0c0e16; --panel:#141826; --panel2:#1a1f30; --border:#262c40;
+ --text:#e7e9f3; --muted:#9aa0b8; --faint:#6b7290;
+ --accent:#8a8aff; --accent-weak:#8a8aff1f; --accent-line:#8a8aff50;
+ --shadow:0 1px 2px #0006,0 4px 14px #0004;
+}
+body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+ color:var(--text);background:var(--bg)}
+a{color:var(--accent);text-decoration:none}
+button{font:inherit;cursor:pointer}
+
+/* shell */
+.top{height:56px;display:flex;align-items:center;gap:14px;padding:0 18px;
+ background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:16px;letter-spacing:.2px}
+.brand .mk{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#9b6bff);
+ display:grid;place-items:center;color:#fff;font-size:15px}
+.omni{flex:1;max-width:560px;position:relative}
+.omni input{width:100%;height:38px;padding:0 12px 0 36px;border:1px solid var(--border);border-radius:10px;
+ background:var(--panel2);color:var(--text);outline:none}
+.omni input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+.omni .ic{position:absolute;left:11px;top:9px;color:var(--faint)}
+.omni .kbd{position:absolute;right:9px;top:8px;font-size:11px;color:var(--faint);border:1px solid var(--border);
+ border-radius:6px;padding:1px 6px;background:var(--panel)}
+.top .sp{flex:1}
+.sel{height:38px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--text);
+ padding:0 10px;outline:none}
+.sel:focus{border-color:var(--accent)}
+.roleseg{display:flex;background:var(--panel2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.roleseg button{border:0;background:transparent;color:var(--muted);padding:8px 12px;font-size:13px;display:flex;gap:6px;align-items:center}
+.roleseg button.on{background:var(--accent);color:#fff}
+.iconbtn{width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);
+ color:var(--muted);display:grid;place-items:center}
+.iconbtn:hover{color:var(--text)}
+
+.wrap{display:flex;min-height:calc(100vh - 56px)}
+aside{width:218px;flex:none;padding:16px 12px;border-right:1px solid var(--border);background:var(--panel);
+ position:sticky;top:56px;height:calc(100vh - 56px);display:flex;flex-direction:column}
+nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;margin:2px 0;padding:9px 11px;
+ border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:14px}
+nav button .ic{width:18px;text-align:center;opacity:.85}
+nav button.on{background:var(--accent-weak);color:var(--accent);font-weight:600}
+nav button:hover:not(.on){background:var(--panel2);color:var(--text)}
+.navlabel{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:14px 8px 4px}
+aside .foot{margin-top:auto;font-size:11px;color:var(--faint);padding:10px 8px;border-top:1px solid var(--border);
+ line-height:1.7;word-break:break-word}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-right:5px}
+
+main{flex:1;padding:22px 26px;max-width:1180px;width:100%}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.2px}
+.sub{color:var(--muted);margin:2px 0 18px}
+.lens{display:flex;gap:9px;align-items:center;background:var(--accent-weak);border:1px solid var(--accent-line);
+ color:var(--text);border-radius:10px;padding:9px 13px;margin:0 0 18px;font-size:13px}
+.lens b{color:var(--accent)}
+
+/* cards / kpis */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:15px 16px;box-shadow:var(--shadow)}
+.kpi .l{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.kpi .n{font-size:28px;font-weight:700;margin-top:6px;letter-spacing:-.5px}
+.kpi .d{font-size:12px;color:var(--faint);margin-top:2px}
+.kpi .n .up{color:var(--good);font-size:13px;font-weight:600;margin-left:6px}
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);margin-bottom:16px}
+.card h3{margin:0 0 2px;font-size:15px}
+.card .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card .ch .sub{margin:0}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);
+ font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);position:sticky;top:56px;background:var(--panel)}
+td{padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:hover td{background:var(--panel2)}
+.ttl{font-weight:600}
+.snip{color:var(--muted);font-size:12.5px;max-width:520px}
+.rowact{display:flex;gap:6px;opacity:0;transition:.12s}
+tr:hover .rowact{opacity:1}
+
+/* bits */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;
+ background:var(--panel2);border:1px solid var(--border);white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tc,var(--muted))}
+.tag{font-size:11px;color:var(--accent);background:var(--accent-weak);border-radius:6px;padding:1px 7px;margin-right:4px}
+.btn{height:36px;padding:0 14px;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:#fff;
+ font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{filter:brightness(1.06)}
+.btn.ghost{background:var(--panel);color:var(--text);border-color:var(--border)}
+.btn.ghost:hover{background:var(--panel2)}
+.btn.danger{background:var(--panel);color:var(--bad);border-color:var(--border)}
+.btn.danger:hover{background:#d6455d12}
+.btn.sm{height:30px;padding:0 10px;font-size:12px}
+.actbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.chip{height:32px;padding:0 12px;border:1px solid var(--border);border-radius:999px;background:var(--panel);
+ color:var(--muted);font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-weak)}
+.empty{text-align:center;color:var(--muted);padding:48px 0}
+.empty .big{font-size:34px;margin-bottom:8px;opacity:.6}
+.muted{color:var(--muted)}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,var(--panel2),var(--border),var(--panel2));
+ background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* lessons / list */
+.litem{padding:13px 0;border-bottom:1px solid var(--border)}
+.litem:last-child{border:0}
+.litem .lt{font-weight:600}
+.litem .lc{color:var(--muted);margin-top:3px}
+.pin{color:var(--warn)}
+
+/* modal */
+.ov{position:fixed;inset:0;background:#0c0e1666;backdrop-filter:blur(3px);display:none;place-items:center;z-index:40;padding:20px}
+.ov.show{display:grid}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;width:100%;max-width:620px;
+ max-height:86vh;overflow:auto;box-shadow:0 20px 60px #0004}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
+.modal .mh h3{margin:0;font-size:16px}
+.modal .mb{padding:18px 20px}
+.modal .mf{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;
+ position:sticky;bottom:0;background:var(--panel)}
+label.fld{display:block;margin-bottom:13px}
+label.fld span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600}
+.fld input,.fld textarea,.fld select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;
+ background:var(--panel2);color:var(--text);outline:none;font:inherit}
+.fld textarea{min-height:120px;resize:vertical}
+.fld input:focus,.fld textarea:focus,.fld select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+.prov{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13px;margin:4px 0 6px}
+.prov .k{color:var(--faint)}
+.x{border:0;background:transparent;color:var(--muted);font-size:20px;line-height:1}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--text);
+ color:var(--bg);padding:11px 18px;border-radius:10px;font-size:13.5px;font-weight:500;opacity:0;pointer-events:none;
+ transition:.25s;z-index:60;box-shadow:0 8px 30px #0003}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* charts */
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px;font-size:13px}
+.bar .track{height:9px;border-radius:6px;background:var(--panel2);overflow:hidden}
+.bar .fill{height:100%;border-radius:6px}
+svg.spark{display:block;width:100%;height:54px}
+
+@media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}
+ aside{position:fixed;left:-240px;transition:.2s;z-index:30}aside.open{left:0}.omni .kbd{display:none}}
+#gcanvas{width:100%;height:460px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+#gtip{position:fixed;pointer-events:none;background:var(--text);color:var(--bg);border-radius:8px;padding:4px 9px;
+ font-size:12px;display:none;max-width:280px;z-index:50}
 </style></head><body>
-<aside>
- <h1>🌙 memento</h1>
- <nav id=nav>
-  <button data-v=overview class=on>Overview</button>
-  <button data-v=memories>Memories</button>
-  <button data-v=graph>Knowledge graph</button>
-  <button data-v=lessons>Lessons</button>
-  <button data-v=sessions>Sessions</button>
-  <button data-v=activity>Activity</button>
- </nav>
- <select id=ns onchange=setNS() title="team / namespace"
-   style="width:100%;margin-top:12px"><option value="">all teams</option></select>
- <div class=foot id=foot></div>
-</aside>
-<main id=main></main>
-<div id=gtip></div><div id=toast></div>
+
+<div class=top>
+ <div class=brand><span class=mk>◐</span> memento</div>
+ <div class=omni>
+  <span class=ic>⌕</span>
+  <input id=q placeholder="Search the team's memory…" autocomplete=off>
+  <span class=kbd>/</span>
+ </div>
+ <div class=sp></div>
+ <select class=sel id=ns title="Team / namespace"></select>
+ <div class=roleseg id=roleseg>
+  <button data-r=product>◔ Product</button>
+  <button data-r=tester>✓ Tester</button>
+  <button data-r=developer>⟨⟩ Dev</button>
+ </div>
+ <button class=iconbtn id=theme title="Toggle theme">☾</button>
+</div>
+
+<div class=wrap>
+ <aside id=side>
+  <div class=navlabel>Workspace</div>
+  <nav id=nav></nav>
+  <div class=foot id=foot><span class=dot></span>connecting…</div>
+ </aside>
+ <main id=main></main>
+</div>
+
+<div class=ov id=ov><div class=modal id=modal></div></div>
+<div id=toast></div>
+<div id=gtip></div>
+
 <script>
-const TC={working:'#22d3ee',episodic:'#a78bfa',semantic:'#34d399',procedural:'#f59e0b',lesson:'#f472b6'};
-const $=s=>document.querySelector(s);
-const esc=x=>(x||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const api=async p=>(await fetch(p)).json();
 const post=async(p,b)=>(await fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})})).json();
-function toast(m){const t=$('#toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,1800);}
-function badge(t){return `<span class=badge style="background:${(TC[t]||'#888')}22;color:${TC[t]||'#aaa'}">${t}</span>`;}
+let TT=null; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(TT);TT=setTimeout(()=>t.classList.remove('show'),1900);}
+const TC={working:'var(--working)',episodic:'var(--episodic)',semantic:'var(--semantic)',procedural:'var(--procedural)'};
+const TIERS=['working','episodic','semantic','procedural'];
+function badge(t){return `<span class=badge style="--tc:${TC[t]||'var(--muted)'}">${esc(t)}</span>`;}
+function fmt(ts){if(!ts)return '—';const d=new Date(ts*1000),n=Date.now()-d,h=36e5;
+ if(n<6e4)return 'just now';if(n<h)return Math.floor(n/6e4)+'m ago';if(n<24*h)return Math.floor(n/h)+'h ago';
+ if(n<7*24*h)return Math.floor(n/(24*h))+'d ago';return d.toLocaleDateString();}
+function tags(s){return (s||'').split(',').filter(Boolean).map(t=>`<span class=tag>${esc(t)}</span>`).join('');}
 
-let NS='';
-const nsq=p=>NS?(p+(p.includes('?')?'&':'?')+'ns='+encodeURIComponent(NS)):p;
-function setNS(){NS=$('#ns').value;nav(location.hash.slice(1)||'overview');}
-async function loadNS(){const d=await api('/api/namespaces');
- $('#ns').innerHTML='<option value="">all teams</option>'+
-  d.namespaces.map(n=>`<option value="${esc(n.namespace)}">${esc(n.namespace)} ·${n.n}</option>`).join('');
- $('#ns').value=NS;}
-function nav(v){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));
- ({overview:overview,memories:memories,graph:graphView,lessons:lessons,sessions:sessions,activity:activity}[v]||overview)();}
-document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>location.hash=b.dataset.v);
-window.onhashchange=()=>nav(location.hash.slice(1)||'overview');
+// ── roles ─────────────────────────────────────────────────────────────────
+const ROLES={
+ product:{name:'Product Owner',
+  lens:'You are seeing the <b>value lens</b> — what the team\'s agent has learned and how its shared knowledge is growing. Plain language, no internals.',
+  nav:['dashboard','lessons','memories','sessions'], edit:false, del:false, admin:false},
+ tester:{name:'Tester / QA',
+  lens:'You are seeing the <b>verification lens</b> — search what the agent knows, inspect where each memory came from, and correct anything that\'s wrong.',
+  nav:['dashboard','memories','lessons','sessions','activity'], edit:true, del:true, admin:false},
+ developer:{name:'Developer',
+  lens:'You are seeing the <b>engineering lens</b> — every field, the knowledge graph, the audit trail, and full read/write control.',
+  nav:['dashboard','memories','lessons','graph','sessions','activity'], edit:true, del:true, admin:true},
+};
+const NAVMETA={dashboard:['◧','Dashboard'],memories:['▤','Memories'],lessons:['✦','Lessons'],
+ graph:['❖','Knowledge graph'],sessions:['◷','Sessions'],activity:['≡','Activity']};
 
-async function overview(){
- const s=await api('/api/stats'),a=(await api('/api/audit')).audit.slice(0,8);
- const tiers=['working','episodic','semantic','procedural'];
- const mx=Math.max(1,...tiers.map(t=>s.by_tier[t]||0));
- $('#main').innerHTML=`<h2>Overview</h2><p class=sub>health & activity at a glance</p>
- <div class=grid>
-  <div class=stat><div class=n>${s.total}</div><div class=l>memories</div></div>
-  <div class=stat><div class=n>${s.entities}</div><div class=l>graph entities</div></div>
-  <div class=stat><div class=n>${s.namespaces}</div><div class=l>namespaces</div></div>
-  <div class=stat><div class=n>${s.fts?'BM25':'LIKE'}</div><div class=l>+ vector search</div></div>
- </div>
- <div class=card><h3>Memory tiers</h3>${tiers.map(t=>`<div class=meta style=margin:10px_0>
-   ${badge(t)}<div class=bar style=flex:1><span style="width:${(s.by_tier[t]||0)/mx*100}%;background:${TC[t]}"></span></div>
-   <span>${s.by_tier[t]||0}</span></div>`).join('')}</div>
- <div class=card><h3>Quick actions</h3>
-  <button class=btn onclick="act('/api/learn','Lessons derived')">✨ Learn lessons</button>
-  <button class="btn ghost" onclick="act('/api/consolidate','Consolidated')">♻️ Consolidate</button></div>
- <div class=card><h3>Recent activity</h3><div class=feed>${a.map(r=>`<div>
-   <span class=op>${esc(r.op)}</span><span>${esc(r.mem_id||r.detail||'')}</span></div>`).join('')||'nothing yet'}</div></div>`;
+let ST={ns:'', role:localStorage.getItem('memento.role')||'developer', view:'dashboard'};
+function R(){return ROLES[ST.role];}
+function nsq(p){return ST.ns?p+(p.includes('?')?'&':'?')+'ns='+encodeURIComponent(ST.ns):p;}
+
+function applyRole(){
+ $$('#roleseg button').forEach(b=>b.classList.toggle('on',b.dataset.r===ST.role));
+ const nav=$('#nav');nav.innerHTML=R().nav.map(v=>{const[ic,lb]=NAVMETA[v];
+  return `<button data-v="${v}" class="${v===ST.view?'on':''}"><span class=ic>${ic}</span>${lb}</button>`;}).join('');
+ $$('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+ if(!R().nav.includes(ST.view))ST.view=R().nav[0];
 }
-async function act(p,msg){await post(p,{});toast(msg);overview();}
+function setRole(r){ST.role=r;localStorage.setItem('memento.role',r);applyRole();go(ST.view);}
 
-async function memories(){
- $('#main').innerHTML=`<h2>Memories</h2><p class=sub>hybrid search · BM25 + semantic vector</p>
- <div class=row><input id=q placeholder="Search…" oninput=loadMem()>
-  <select id=ft onchange=loadMem() style=max-width:160px><option value="">all tiers</option>
-   <option>working<option>episodic<option>semantic<option>procedural</select></div>
- <details class=card><summary style=cursor:pointer>+ Add a memory</summary>
-  <div class=row><input id=mt placeholder=Title></div><textarea id=mc rows=3 placeholder=Content></textarea>
-  <div class=row><select id=mtier><option>episodic<option>working<option>semantic<option>procedural</select>
-   <input id=mtags placeholder=tags><button class=btn onclick=saveMem()>Save</button></div></details>
- <div id=list></div>`;
+function go(v){ST.view=v;location.hash=v;applyRole();
+ ({dashboard:vDash,memories:vMem,lessons:vLessons,graph:vGraph,sessions:vSessions,activity:vActivity}[v]||vDash)();}
+
+// ── namespace selector ──────────────────────────────────────────────────────
+async function loadNS(){const d=await api('/api/namespaces');const sel=$('#ns');
+ const list=d.namespaces&&d.namespaces.length?d.namespaces:['default'];
+ sel.innerHTML='<option value="">All teams</option>'+list.map(n=>`<option>${esc(n)}</option>`).join('');
+ sel.onchange=()=>{ST.ns=sel.value;go(ST.view);};}
+
+// ── charts ──────────────────────────────────────────────────────────────────
+function bars(map){const tot=Object.values(map).reduce((a,b)=>a+b,0)||1;
+ return '<div class=bars>'+TIERS.filter(t=>map[t]).map(t=>{const v=map[t]||0;
+  return `<div class=bar><div>${badge(t)}</div><div class=track><div class=fill style="width:${v/tot*100}%;background:${TC[t]}"></div></div><div style="text-align:right;color:var(--muted)">${v}</div></div>`;}).join('')+'</div>';}
+function spark(pts){if(!pts.length)return '<div class=muted style="padding:14px 0">No recent activity.</div>';
+ const max=Math.max(...pts,1),n=pts.length,W=100,H=46;
+ const dx=n>1?W/(n-1):0;const d=pts.map((v,i)=>`${i*dx},${H-v/max*H}`).join(' ');
+ return `<svg class=spark viewBox="0 0 ${W} ${H}" preserveAspectRatio=none>
+  <polyline points="${d}" fill=none stroke="var(--accent)" stroke-width=2 vector-effect=non-scaling-stroke/>
+  <polyline points="0,${H} ${d} ${W},${H}" fill="var(--accent-weak)" stroke=none/></svg>`;}
+function dayBuckets(audit,days=14){const now=Date.now(),b=Array(days).fill(0);
+ audit.forEach(a=>{const age=Math.floor((now-a.ts*1000)/864e5);if(age>=0&&age<days)b[days-1-age]++;});return b;}
+
+// ── dashboard (role-aware) ──────────────────────────────────────────────────
+async function vDash(){
+ $('#main').innerHTML=`<div class=head><div><h1>Dashboard</h1>
+  <p class=sub>${ST.ns?('Team · '+esc(ST.ns)):'All teams'}</p></div></div>
+  <div class=lens>${R().lens}</div><div id=body><div class=kpis>
+  ${'<div class=kpi><div class="skel" style="width:60%"></div><div class="skel n" style="height:28px;margin-top:8px"></div></div>'.repeat(4)}</div></div>`;
+ const [s,au,les]=await Promise.all([api('/api/stats'),api('/api/audit'),api(nsq('/api/lessons'))]);
+ const audit=au.audit||[],lessons=les.lessons||[];
+ const week=audit.filter(a=>a.op==='save'&&Date.now()-a.ts*1000<7*864e5).length;
+ const learned=lessons.length;
+ const k=(l,n,d,ic)=>`<div class=kpi><div class=l>${ic||''} ${l}</div><div class=n>${n}</div><div class=d>${d}</div></div>`;
+ let kpis;
+ if(ST.role==='product'){
+  kpis=k('Knowledge items',s.total,'things the agent remembers','◳')
+      +k('Lessons learned',learned,'reusable insights','✦')
+      +k('Teams',s.namespaces,'sharing this memory','◍')
+      +k('Added this week',`${week}<span class=up>▲</span>`,'new memories','＋');
+ }else{
+  kpis=k('Total memories',s.total,(s.fts?'full-text + vector':'LIKE fallback')+' search','▤')
+      +k('Entities',s.entities,'in the knowledge graph','❖')
+      +k('Namespaces',s.namespaces,'teams / scopes','◍')
+      +k('Saved · 7d',`${week}<span class=up>▲</span>`,'write activity','＋');
+ }
+ const tierTitle=ST.role==='product'?'What kind of knowledge':'Memory by tier';
+ const lessTitle=ST.role==='product'?'What the agent has learned':'Recent lessons';
+ $('#body').innerHTML=`<div class=kpis>${kpis}</div>
+  <div class=cols>
+   <div><div class=card><div class=ch><div><h3>${lessTitle}</h3><p class=sub>${ST.role==='product'?'insights distilled from how the team works':'derived from recurring patterns'}</p></div>
+     ${ST.view==='dashboard'&&R().admin?'<button class="btn ghost sm" onclick="doLearn()">✦ Derive</button>':''}</div>
+     ${lessons.length?lessons.slice(0,6).map(l=>`<div class=litem><div class=lt>${l.pinned?'<span class=pin>★</span> ':''}${esc(l.title)}</div><div class=lc>${esc((l.content||'').slice(0,160))}</div></div>`).join(''):'<div class=empty><div class=big>✦</div>No lessons yet.</div>'}
+    </div></div>
+   <div>
+    <div class=card><div class=ch><div><h3>${tierTitle}</h3></div></div>${bars(s.by_tier||{})}</div>
+    <div class=card><div class=ch><div><h3>Activity</h3><p class=sub>last 14 days</p></div></div>${spark(dayBuckets(audit))}</div>
+   </div>
+  </div>`;
+}
+
+// ── memories: search + table + inspect/edit ─────────────────────────────────
+let MODE='hybrid';
+async function vMem(){
+ const canNew=R().edit;
+ $('#main').innerHTML=`<div class=head><div><h1>Memories</h1>
+   <p class=sub>${ST.role==='tester'?'search, verify provenance, and correct what the agent knows':'hybrid search · BM25 + semantic vector'}</p></div>
+   ${canNew?'<button class=btn onclick="openEdit(null)">＋ New memory</button>':''}</div>
+  <div class=lens>${R().lens}</div>
+  <div class=filters>
+   <input id=mq class=sel style="flex:1;min-width:200px" placeholder="Filter within results…">
+   <div class=chip-row id=tierchips></div>
+   <button class="chip ${MODE==='hybrid'?'on':''}" data-m=hybrid>Hybrid</button>
+   <button class="chip ${MODE==='bm25'?'on':''}" data-m=bm25>Keyword</button>
+   <button class="chip ${MODE==='vector'?'on':''}" data-m=vector>Semantic</button>
+  </div>
+  <div class=card style="padding:0"><table><thead><tr><th>Memory</th><th style=width:110px>Tier</th><th style=width:120px>Updated</th><th style=width:130px></th></tr></thead><tbody id=rows></tbody></table></div>`;
+ $('#tierchips').innerHTML='<button class="chip tf on" data-t="">All</button>'+TIERS.map(t=>`<button class="chip tf" data-t="${t}">${t}</button>`).join('');
+ $$('#tierchips .tf').forEach(b=>b.onclick=()=>{$$('#tierchips .tf').forEach(x=>x.classList.remove('on'));b.classList.add('on');TIER=b.dataset.t;loadMem();});
+ $$('.filters .chip[data-m]').forEach(b=>b.onclick=()=>{MODE=b.dataset.m;$$('.filters .chip[data-m]').forEach(x=>x.classList.toggle('on',x===b));loadMem();});
+ $('#mq').oninput=()=>{clearTimeout(window._mt);window._mt=setTimeout(loadMem,180);};
  loadMem();
 }
+let TIER='';
 async function loadMem(){
- const d=await api(nsq('/api/memories?q='+encodeURIComponent($('#q').value)+'&tier='+($('#ft').value||'')));
- $('#list').innerHTML=d.memories.map(m=>`<div class=card>
-  <span class=act onclick="mforget('${m.id}')">forget ✕</span>
-  <span class="act pin" onclick="mpin('${m.id}',${m.pinned?0:1})">${m.pinned?'📌 pinned':'pin'}</span>
-  <h3>${esc(m.title)}</h3><div>${esc(m.content)}</div>
-  <div class=meta>${badge(m.tier)}<span>${esc(m.namespace)}</span>${m.tags?'<span>#'+esc(m.tags)+'</span>':''}
-   <span>${new Date(m.created_ts*1000).toLocaleString()}</span></div></div>`).join('')||'<p class=sub>No memories.</p>';
- setFoot();
-}
-async function saveMem(){const r=await post('/api/memories',{title:$('#mt').value,content:$('#mc').value,tier:$('#mtier').value,tags:$('#mtags').value,namespace:NS||'default'});
- if(r.error){toast(r.error);return;}$('#mt').value=$('#mc').value=$('#mtags').value='';toast('saved');loadMem();}
-async function mforget(id){await post('/api/forget',{id});toast('forgotten');loadMem();}
-async function mpin(id,p){await post('/api/pin',{id,pinned:!!p});loadMem();}
-
-async function lessons(){
- const d=await api(nsq('/api/lessons'));
- $('#main').innerHTML=`<h2>Lessons</h2><p class=sub>insights derived from recurring patterns — or pin your own</p>
- <div class=card><button class=btn onclick=doLearn()>✨ Learn now</button>
-  <span class=sub style=margin-left:10px>mines recurring entities, tags & failures into the semantic tier</span></div>
- <details class=card><summary style=cursor:pointer>+ Add a lesson (manual, pinned)</summary>
-  <div class=row><input id=lt placeholder="Lesson title"></div>
-  <textarea id=lc rows=2 placeholder="What did we learn?"></textarea>
-  <div class=row><button class=btn onclick=doAddLesson()>Save lesson</button></div>
-  <span class=sub>Manual lessons are pinned 📌, so "Learn now" never overwrites them.</span></details>
- <div id=ll>${d.lessons.map(m=>`<div class=card>${badge('lesson')} ${m.pinned?'📌 ':''}<h3 style=display:inline>${esc(m.title)}</h3>
-   <div style=margin-top:6px>${esc(m.content)}</div></div>`).join('')||'<p class=sub>No lessons yet — click Learn now or add one.</p>'}</div>`;
-}
-async function doLearn(){const r=await post('/api/learn',{});toast('derived '+(r.created||[]).length+' lesson(s)');lessons();}
-async function doAddLesson(){const r=await post('/api/lesson',{title:$('#lt').value,content:$('#lc').value,namespace:NS||'default'});
- if(r.error){toast(r.error);return;}toast('lesson pinned');lessons();}
-
-async function sessions(){
- const d=await api('/api/sessions');
- $('#main').innerHTML=`<h2>Sessions</h2><p class=sub>memories grouped by session</p>
- ${d.sessions.map(s=>`<div class=card><h3>${esc(s.session)}</h3>
-   <div class=meta><span>${s.n} memories</span><span>last ${new Date(s.last*1000).toLocaleString()}</span></div></div>`).join('')||'<p class=sub>No sessions yet.</p>'}`;
+ const rows=$('#rows');if(rows)rows.innerHTML=`<tr><td colspan=4><div class=skel style="width:40%"></div></td></tr>`;
+ const q=$('#q').value||'';
+ const d=await api(nsq('/api/memories?mode='+MODE+'&q='+encodeURIComponent(q)+'&tier='+encodeURIComponent(TIER)));
+ let mem=d.memories||[];
+ const f=($('#mq')&&$('#mq').value||'').toLowerCase();
+ if(f)mem=mem.filter(m=>(m.title+' '+m.content+' '+(m.tags||'')).toLowerCase().includes(f));
+ if(!mem.length){rows.innerHTML=`<tr><td colspan=4><div class=empty><div class=big>▤</div>No memories match.${R().edit?' <a href="#" onclick="openEdit(null);return false">Add one</a>.':''}</div></td></tr>`;return;}
+ rows.innerHTML=mem.map(m=>`<tr>
+  <td><div class=ttl>${m.pinned?'<span class=pin>★</span> ':''}<a href="#" onclick="inspect('${m.id}');return false">${esc(m.title)}</a></div>
+   <div class=snip>${esc((m.content||'').slice(0,150))}</div><div style=margin-top:6px>${tags(m.tags)}</div></td>
+  <td>${badge(m.tier)}</td><td class=muted>${fmt(m.accessed_ts||m.created_ts)}</td>
+  <td><div class=rowact>
+   <button class="btn ghost sm" onclick="inspect('${m.id}')">Inspect</button>
+   ${R().edit?`<button class="btn ghost sm" onclick="openEditId('${m.id}')">Edit</button>`:''}
+   ${R().del?`<button class="btn danger sm" onclick="doForget('${m.id}')">✕</button>`:''}
+  </div></td></tr>`).join('');
 }
 
-async function activity(){
- const d=await api('/api/audit');
- $('#main').innerHTML=`<h2>Activity</h2><p class=sub>audit log — every operation</p>
- <div class=card><div class=feed>${d.audit.map(r=>`<div><span class=op>${esc(r.op)}</span>
-   <span>${esc(r.mem_id||'')}</span><span style=color:#a895d8>${esc(r.detail||'')}</span></div>`).join('')||'empty'}</div></div>`;
+async function inspect(id){
+ const d=await api('/api/memory?id='+encodeURIComponent(id));if(d.error){toast('Not found');return;}
+ const m=d.memory,rel=m.related||[];
+ modal(`<div class=mh><h3>${esc(m.title)}</h3><button class=x onclick=closeModal()>×</button></div>
+  <div class=mb>
+   <div style="margin-bottom:14px">${badge(m.tier)} ${tags(m.tags)}</div>
+   <p style="white-space:pre-wrap;margin:0 0 16px">${esc(m.content)}</p>
+   <h3 style="font-size:13px;margin:0 0 6px;color:var(--muted)">Provenance</h3>
+   <div class=prov>
+    <span class=k>Source</span><span>${esc(m.source||'—')}</span>
+    <span class=k>Saved by</span><span>${esc(m.actor||'—')}</span>
+    <span class=k>Session</span><span>${esc(m.session||'—')}</span>
+    <span class=k>Team</span><span>${esc(m.namespace||'default')}</span>
+    <span class=k>Created</span><span>${fmt(m.created_ts)}</span>
+    <span class=k>Recalled</span><span>${m.access_count||0}× · last ${fmt(m.accessed_ts)}</span>
+    <span class=k>ID</span><span class=muted style=font-family:monospace>${esc(m.id)}</span>
+   </div>
+   ${rel.length?`<h3 style="font-size:13px;margin:16px 0 6px;color:var(--muted)">Related</h3>`+rel.map(r=>`<div class=litem style="padding:8px 0"><a href="#" onclick="inspect('${r.id}');return false">${esc(r.title)}</a> ${badge(r.tier)}</div>`).join(''):''}
+  </div>
+  <div class=mf>
+   ${R().del?`<button class="btn danger" onclick="doForget('${m.id}',true)">Delete</button>`:''}
+   ${R().edit?`<button class="btn ghost" onclick='openEdit(${JSON.stringify(m).replace(/'/g,"&#39;")})'>Edit</button>`:''}
+   <button class=btn onclick=closeModal()>Close</button>
+  </div>`);
 }
 
-// ── force-directed knowledge graph ────────────────────────────────────────────
-let RAF=null;
-async function graphView(){
- $('#main').innerHTML=`<h2>Knowledge graph</h2><p class=sub>entities ◯ and the memories ● that mention them · drag nodes</p>
-  <canvas id=cv></canvas>`;
- const g=await api(nsq('/api/graph'));
- const cv=$('#cv');cv.width=cv.clientWidth;cv.height=cv.clientHeight;
- const ents=g.entities.map(e=>({id:'e:'+e.name,label:e.name,type:'e',r:9+Math.min(16,e.count*3)}));
- const mems=g.memories.map(m=>({id:'m:'+m.id,label:m.title,type:'m',tier:m.tier,r:6}));
- const nodes=ents.concat(mems),idx={};nodes.forEach((n,i)=>idx[n.id]=i);
- nodes.forEach(n=>{n.x=Math.random()*cv.width;n.y=Math.random()*cv.height;n.vx=0;n.vy=0;});
- const links=g.edges.map(e=>[idx['m:'+e.mem],idx['e:'+e.entity]]).filter(l=>l[0]!=null&&l[1]!=null);
- if(!nodes.length){cv.getContext('2d').fillStyle='#a895d8';cv.getContext('2d').fillText('No entities yet — save memories that mention CamelCase or `code` terms.',20,40);return;}
- const ctx=cv.getContext('2d');let drag=null;
- cv.onmousedown=e=>{const m=pos(e);drag=near(m);};
- cv.onmouseup=()=>drag=null;
- cv.onmousemove=e=>{const m=pos(e);if(drag){drag.x=m.x;drag.y=m.y;drag.vx=drag.vy=0;}
-   const h=near(m);const tip=$('#gtip');if(h){tip.style.display='block';tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY+12+'px';tip.textContent=h.label;}else tip.style.display='none';};
- function pos(e){const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
- function near(m){let best=null,bd=1e9;nodes.forEach(n=>{const d=(n.x-m.x)**2+(n.y-m.y)**2;if(d<bd&&d<(n.r+6)**2){bd=d;best=n;}});return best;}
+async function openEditId(id){const d=await api('/api/memory?id='+encodeURIComponent(id));if(d.memory)openEdit(d.memory);}
+function openEdit(m){
+ const isNew=!m;m=m||{tier:'episodic'};
+ modal(`<div class=mh><h3>${isNew?'New memory':'Edit memory'}</h3><button class=x onclick=closeModal()>×</button></div>
+  <div class=mb>
+   <label class=fld><span>Title</span><input id= et value="${esc(m.title||'')}" placeholder="Short, recognizable summary"></label>
+   <label class=fld><span>Content</span><textarea id=ec placeholder="What should the agent remember?">${esc(m.content||'')}</textarea></label>
+   <label class=fld><span>Tier</span><select id=etier>${TIERS.map(t=>`<option ${m.tier===t?'selected':''}>${t}</option>`).join('')}</select></label>
+   <label class=fld><span>Tags <span class=muted>(comma-separated)</span></span><input id=etags value="${esc(m.tags||'')}" placeholder="build, auth, java"></label>
+  </div>
+  <div class=mf><button class="btn ghost" onclick=closeModal()>Cancel</button>
+   <button class=btn onclick='saveEdit(${isNew?'null':JSON.stringify(m.id)})'>${isNew?'Save memory':'Save changes'}</button></div>`);
+ setTimeout(()=>$('#et')&&$('#et').focus(),40);
+}
+async function saveEdit(id){
+ const body={title:$('#et').value,content:$('#ec').value,tier:$('#etier').value,tags:$('#etags').value};
+ if(!body.title.trim()||!body.content.trim()){toast('Title and content are required');return;}
+ let r;
+ if(id){r=await post('/api/update',{id,...body});}
+ else{body.namespace=ST.ns||'default';r=await post('/api/memories',body);}
+ if(r.error){toast(r.error);return;}
+ closeModal();toast(id?'Memory updated':'Memory saved');loadMem&&$('#rows')&&loadMem();
+}
+async function doForget(id,fromModal){if(!confirm('Delete this memory for the whole team?'))return;
+ await post('/api/forget',{id});if(fromModal)closeModal();toast('Deleted');$('#rows')?loadMem():go(ST.view);}
+
+// ── lessons ─────────────────────────────────────────────────────────────────
+async function vLessons(){
+ $('#main').innerHTML=`<div class=head><div><h1>Lessons</h1>
+  <p class=sub>${ST.role==='product'?'plain-language insights the team\'s agent has distilled':'insights derived from recurring patterns — or pin your own'}</p></div>
+  ${R().admin?'<div class=actbar style=margin:0><button class="btn ghost" onclick="doLearn()">✦ Derive lessons</button><button class=btn onclick="openLesson()">＋ Add lesson</button></div>':''}</div>
+  <div class=lens>${R().lens}</div><div class=card id=lwrap><div class=skel style=width:50%></div></div>`;
+ const d=await api(nsq('/api/lessons'));const L=d.lessons||[];
+ $('#lwrap').innerHTML=L.length?L.map(l=>`<div class=litem><div class=lt>${l.pinned?'<span class=pin>★</span> ':''}${esc(l.title)}</div><div class=lc>${esc(l.content||'')}</div></div>`).join(''):'<div class=empty><div class=big>✦</div>No lessons yet'+(R().admin?'. <a href="#" onclick="doLearn();return false">Derive some</a> from recurring patterns.':'.')+'</div>';
+}
+function openLesson(){modal(`<div class=mh><h3>Add lesson</h3><button class=x onclick=closeModal()>×</button></div>
+  <div class=mb><label class=fld><span>Title</span><input id=lt></label>
+   <label class=fld><span>Lesson</span><textarea id=lc></textarea></label></div>
+  <div class=mf><button class="btn ghost" onclick=closeModal()>Cancel</button><button class=btn onclick=saveLesson()>Save</button></div>`);}
+async function saveLesson(){const r=await post('/api/lesson',{title:$('#lt').value,content:$('#lc').value,namespace:ST.ns||'default'});
+ if(r.error){toast(r.error);return;}closeModal();toast('Lesson added');vLessons();}
+async function doLearn(){toast('Deriving…');const r=await post('/api/learn',{});toast('Derived '+((r.created||[]).length)+' lesson(s)');go(ST.view);}
+
+// ── sessions / activity ─────────────────────────────────────────────────────
+async function vSessions(){
+ $('#main').innerHTML=`<div class=head><div><h1>Sessions</h1><p class=sub>memories grouped by working session</p></div></div>
+  <div class=card style=padding:0><table><thead><tr><th>Session</th><th style=width:120px>Memories</th><th style=width:160px>Last activity</th></tr></thead><tbody id=sb></tbody></table></div>`;
+ const d=await api('/api/sessions');const S=d.sessions||[];
+ $('#sb').innerHTML=S.length?S.map(s=>`<tr><td class=ttl>${esc(s.session)}</td><td>${s.n}</td><td class=muted>${fmt(s.last)}</td></tr>`).join(''):'<tr><td colspan=3><div class=empty><div class=big>◷</div>No sessions recorded.</div></td></tr>';
+}
+async function vActivity(){
+ $('#main').innerHTML=`<div class=head><div><h1>Activity</h1><p class=sub>audit trail — every write to team memory</p></div></div>
+  <div class=card style=padding:0><table><thead><tr><th style=width:120px>When</th><th style=width:90px>Op</th><th>Memory</th><th style=width:130px>By</th></tr></thead><tbody id=ab></tbody></table></div>`;
+ const d=await api('/api/audit');const A=d.audit||[];
+ const opc={save:'var(--good)',edit:'var(--warn)',forget:'var(--bad)',pin:'var(--accent)',unpin:'var(--muted)'};
+ $('#ab').innerHTML=A.length?A.map(a=>`<tr><td class=muted>${fmt(a.ts)}</td>
+  <td><span class=badge style="--tc:${opc[a.op]||'var(--muted)'}">${esc(a.op)}</span></td>
+  <td class=muted style=font-family:monospace>${esc(a.mem_id||'—')}${a.detail?' · '+esc(a.detail):''}</td>
+  <td class=muted>${esc(a.actor||'—')}</td></tr>`).join(''):'<tr><td colspan=4><div class=empty><div class=big>≡</div>No activity yet.</div></td></tr>';
+}
+
+// ── knowledge graph ─────────────────────────────────────────────────────────
+let RAF;
+async function vGraph(){
+ $('#main').innerHTML=`<div class=head><div><h1>Knowledge graph</h1>
+  <p class=sub>entities ◯ and the memories ● that mention them · drag to explore</p></div></div>
+  <canvas id=gcanvas></canvas>`;
  if(RAF)cancelAnimationFrame(RAF);
+ const g=await api(nsq('/api/graph'));const cv=$('#gcanvas'),ctx=cv.getContext('2d');
+ const dpr=devicePixelRatio||1;function size(){cv.width=cv.clientWidth*dpr;cv.height=cv.clientHeight*dpr;}size();
+ const cs=getComputedStyle(document.body),AC=cs.getPropertyValue('--accent'),TXc=cs.getPropertyValue('--text'),MU=cs.getPropertyValue('--muted');
+ const nodes=(g.nodes||[]).map(n=>({...n,x:Math.random()*cv.width,y:Math.random()*cv.height,vx:0,vy:0,
+   r:n.type==='e'?5:8}));
+ const idx={};nodes.forEach((n,i)=>idx[n.id]=i);const edges=(g.edges||[]).filter(e=>idx[e.s]!=null&&idx[e.t]!=null);
+ let drag=null,tip=$('#gtip');
+ function pos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*dpr,y:(e.clientY-r.top)*dpr};}
+ function near(m){let b=null,bd=1e9;nodes.forEach(n=>{const d=(n.x-m.x)**2+(n.y-m.y)**2;if(d<bd&&d<(n.r*dpr+8*dpr)**2){bd=d;b=n;}});return b;}
+ cv.onmousedown=e=>{drag=near(pos(e));};
+ cv.onmousemove=e=>{const m=pos(e);if(drag){drag.x=m.x;drag.y=m.y;drag.vx=drag.vy=0;}
+  const h=near(m);if(h){tip.style.display='block';tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY+12+'px';tip.textContent=h.label;}else tip.style.display='none';};
+ window.onmouseup=()=>drag=null;
  (function step(){const W=cv.width,H=cv.height;
   for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){const a=nodes[i],b=nodes[j];
-   let dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy+.01,d=Math.sqrt(d2),f=900/d2;
-   a.vx+=f*dx/d;a.vy+=f*dy/d;b.vx-=f*dx/d;b.vy-=f*dy/d;}
-  links.forEach(l=>{const a=nodes[l[0]],b=nodes[l[1]];let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1,f=(d-72)*.015;
-   a.vx+=f*dx/d;a.vy+=f*dy/d;b.vx-=f*dx/d;b.vy-=f*dy/d;});
-  nodes.forEach(n=>{n.vx+=(W/2-n.x)*.002;n.vy+=(H/2-n.y)*.002;n.vx*=.86;n.vy*=.86;
-   if(n!==drag){n.x+=n.vx;n.y+=n.vy;}n.x=Math.max(n.r,Math.min(W-n.r,n.x));n.y=Math.max(n.r,Math.min(H-n.r,n.y));});
-  ctx.clearRect(0,0,W,H);ctx.strokeStyle='#ffffff1f';ctx.lineWidth=1;
-  links.forEach(l=>{const a=nodes[l[0]],b=nodes[l[1]];ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
-  nodes.forEach(n=>{ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,7);
-   ctx.fillStyle=n.type=='e'?'#22d3ee':(TC[n.tier]||'#a78bfa');ctx.fill();
-   if(n.type=='e'){ctx.fillStyle='#f8fafc';ctx.font='12px sans-serif';ctx.fillText(n.label,n.x+n.r+3,n.y+4);}});
+   let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1,f=(2200*dpr)/(d*d);dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
+  edges.forEach(e=>{const a=nodes[idx[e.s]],b=nodes[idx[e.t]];let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,f=(d-70*dpr)*0.01;dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;});
+  nodes.forEach(n=>{if(n===drag)return;n.vx+=(W/2-n.x)*0.0008;n.vy+=(H/2-n.y)*0.0008;n.x+=n.vx*=0.86;n.y+=n.vy*=0.86;
+   n.x=Math.max(n.r*dpr,Math.min(W-n.r*dpr,n.x));n.y=Math.max(n.r*dpr,Math.min(H-n.r*dpr,n.y));});
+  ctx.clearRect(0,0,W,H);ctx.strokeStyle=MU+'55';ctx.lineWidth=dpr;
+  edges.forEach(e=>{const a=nodes[idx[e.s]],b=nodes[idx[e.t]];ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+  nodes.forEach(n=>{ctx.beginPath();ctx.arc(n.x,n.y,n.r*dpr,0,7);
+   ctx.fillStyle=n.type==='e'?MU:AC;ctx.fill();
+   if(n.type==='e'){ctx.fillStyle=TXc;ctx.font=12*dpr+'px sans-serif';ctx.fillText(n.label,n.x+n.r*dpr+3,n.y+4*dpr);}});
   RAF=requestAnimationFrame(step);})();
 }
 
+// ── footer / boot ───────────────────────────────────────────────────────────
 async function setFoot(){const s=await api('/api/stats');
- $('#foot').textContent=(s.mode||'solo')+' · '+(s.backend||'sqlite')+' · '+s.db;}
-loadNS();nav(location.hash.slice(1)||'overview');setFoot();
+ $('#foot').innerHTML=`<span class=dot></span>${esc(s.mode||'solo')} · ${esc(s.backend||'sqlite')}<br><span class=muted>${esc((s.db||'').split('/').pop())}</span>`;}
+
+$('#roleseg').onclick=e=>{const b=e.target.closest('button');if(b)setRole(b.dataset.r);};
+$('#theme').onclick=()=>{const d=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+ document.documentElement.setAttribute('data-theme',d);localStorage.setItem('memento.theme',d);
+ $('#theme').textContent=d==='dark'?'☀':'☾';};
+function modal(html){$('#modal').innerHTML=html;$('#ov').classList.add('show');}
+function closeModal(){$('#ov').classList.remove('show');}
+$('#ov').onclick=e=>{if(e.target.id==='ov')closeModal();};
+let QT;$('#q').oninput=()=>{clearTimeout(QT);QT=setTimeout(()=>{if(ST.view==='memories')loadMem();else go('memories');},200);};
+document.onkeydown=e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();$('#q').focus();}
+ if(e.key==='Escape')closeModal();};
+
+(function init(){
+ const th=localStorage.getItem('memento.theme')||'light';
+ document.documentElement.setAttribute('data-theme',th);$('#theme').textContent=th==='dark'?'☀':'☾';
+ if(!ROLES[ST.role])ST.role='developer';
+ const h=location.hash.slice(1);applyRole();loadNS().then(()=>{setFoot();go(NAVMETA[h]?h:R().nav[0]);});
+})();
 </script></body></html>"""
 
 
@@ -862,8 +1181,16 @@ def _make_handler(store):
             if u.path == "/api/memories":
                 q = (qs.get("q") or [""])[0]
                 tier = (qs.get("tier") or [None])[0]
+                mode = (qs.get("mode") or ["hybrid"])[0]
                 return self._send(200, json.dumps(
-                    {"memories": store.search(q, limit=200, tier=tier, namespace=ns)}))
+                    {"memories": store.search(q, limit=200, tier=tier,
+                                              namespace=ns, mode=mode)}))
+            if u.path == "/api/memory":
+                mem = store.get((qs.get("id") or [""])[0])
+                if not mem:
+                    return self._send(404, json.dumps({"error": "not found"}))
+                mem["related"] = store.related(mem["id"], limit=8)
+                return self._send(200, json.dumps({"memory": mem}))
             return self._send(404, json.dumps({"error": "not found"}))
 
         def do_POST(self):
@@ -877,6 +1204,14 @@ def _make_handler(store):
                                      session=body.get("session", ""),
                                      namespace=body.get("namespace") or DEFAULT_NAMESPACE)
                     return self._send(200, json.dumps({"id": mid}))
+                except ValueError as e:
+                    return self._send(400, json.dumps({"error": str(e)}))
+            if path == "/api/update":
+                try:
+                    ok = store.update(body.get("id"), title=body.get("title"),
+                                      content=body.get("content"), tier=body.get("tier"),
+                                      tags=body.get("tags"), actor=body.get("actor", ""))
+                    return self._send(200, json.dumps({"ok": ok}))
                 except ValueError as e:
                     return self._send(400, json.dumps({"error": str(e)}))
             if path == "/api/forget":

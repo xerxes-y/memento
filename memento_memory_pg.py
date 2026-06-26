@@ -165,6 +165,37 @@ class MemoryStorePG:
             self._audit(c, "pin" if pinned else "unpin", mem_id)
             return cur.rowcount > 0
 
+    def update(self, mem_id, title=None, content=None, tier=None, tags=None,
+               namespace=None, actor=""):
+        """Edit an existing memory in place. Only provided fields change.
+        Returns False if the id is absent (or, with namespace set, another team's)."""
+        with self._conn() as c:
+            sql = "SELECT * FROM memories WHERE id=%s"
+            params = [mem_id]
+            if namespace:  # team gate: can't edit another team's memory
+                sql += " AND namespace=%s"; params.append(namespace)
+            cur = c.execute(sql, params).fetchone()
+            if not cur:
+                return False
+            new_title = redact_secrets(title.strip()) if title is not None else cur["title"]
+            new_content = redact_secrets(content.strip()) if content is not None else cur["content"]
+            if not new_title or not new_content:
+                raise ValueError("both 'title' and 'content' are required")
+            new_tier = tier if tier in TIERS else cur["tier"]
+            new_tags = self._norm_tags(tags) if tags is not None else cur["tags"]
+            c.execute("UPDATE memories SET title=%s, content=%s, tier=%s, tags=%s, "
+                      "accessed_ts=%s WHERE id=%s",
+                      (new_title, new_content, new_tier, new_tags, time.time(), mem_id))
+            if self.pgvector:
+                c.execute("UPDATE memories SET embedding=%s::vector WHERE id=%s",
+                          (self._dense_literal(new_title + " " + new_content), mem_id))
+            c.execute("DELETE FROM mem_entities WHERE mem_id=%s", (mem_id,))
+            for ent in extract_entities(new_title + " " + new_content):
+                c.execute("INSERT INTO mem_entities(mem_id,entity) VALUES(%s,%s) "
+                          "ON CONFLICT DO NOTHING", (mem_id, ent))
+            self._audit(c, "edit", mem_id, actor, new_tier)
+        return True
+
     def forget(self, mem_id=None, query=None, namespace=None):
         with self._conn() as c:
             if mem_id:

@@ -283,9 +283,21 @@ Open the dashboard (ask Devin to run `memory_dashboard`, or standalone):
 python3 mcp_server.py --web --port 3114    # → http://127.0.0.1:3114
 ```
 
-A single-page app served from the stdlib — **overview/health**, a **memory
-browser**, a **force-directed knowledge graph**, **lessons**, sessions, and an
-**activity** log:
+An enterprise-style single-page app served from the stdlib (no npm, no build) —
+**role-aware** so the same team memory reads correctly for everyone:
+
+- **◔ Product Owner** — a value lens: KPIs (knowledge items, lessons learned,
+  teams, weekly growth), plain-language "what the agent has learned", no internals.
+- **✓ Tester / QA** — a verification lens: search-first, inspect each memory's
+  **provenance** (source, author, session, recall count), and **correct** anything
+  wrong inline.
+- **⟨⟩ Developer** — the engineering lens: every field, the **knowledge graph**,
+  the **audit trail**, and full read/write/derive control.
+
+Plus global search (`/` to focus, hybrid · keyword · semantic), inline **create
+and edit**, a force-directed **knowledge graph**, **lessons**, sessions, an
+**activity/audit** log, and a light/dark theme. Role is remembered per browser;
+edits and deletes are gated by role and (in team mode) by the Keycloak gate.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/xerxes-y/memento/main/assets/dashboard/overview.png" width="49%" alt="memento dashboard — overview">
