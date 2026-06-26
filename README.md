@@ -261,6 +261,15 @@ Solo needs zero setup; switching to team is one env var, nothing else changes
   **auto-consolidation** (reinforced memories promote up a tier) and **decay /
   auto-forget** of stale, never-used working memories. `memory_pin` protects a
   memory.
+
+> **How memento decides what's worth keeping** — it doesn't judge importance at
+> write time; worth is *earned by reuse*. New memories enter the short-lived
+> `working` tier; `memory_consolidate` then **forgets** any working memory
+> recalled 0× after 24h and **promotes** any recalled ≥3× up a tier
+> (`working → episodic → semantic`). Ranking uses a decay score (**7-day
+> half-life** × recall reinforcement); `memory_pin` exempts must-keeps. Patterns
+> recurring across ≥2 memories distill into **lessons**. Deterministic and
+> API-free by design — the heuristics are LLM-swappable.
 - **Lessons** — `memory_learn` mines recurring patterns (entities, tags,
   repeated failures) and derives **lessons** into the semantic tier;
   `memory_lessons` lists them. Re-running regenerates them (pinned lessons are
